@@ -205,7 +205,9 @@ export class DataDictionaryService {
             }
         } else {
             // Fallback: derive path params from {placeholders} in the path (braces stripped).
-            const placeholders = (endpoint.endpoint as string).match(/\{([^}]+)\}/g);
+            // UnifiedApiDto uses `path`; tolerate a legacy `endpoint` field and a missing value.
+            const pathStr = (endpoint.path ?? endpoint.endpoint ?? '') as string;
+            const placeholders = pathStr.match(/\{([^}]+)\}/g);
             if (placeholders) {
                 for (const ph of placeholders) {
                     fields.push({
