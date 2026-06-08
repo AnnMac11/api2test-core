@@ -27,5 +27,6 @@ export { DataDictionaryService } from './services/DataDictionaryService';
 export { DataLibraryService } from './services/DataLibraryService';
 export { ClassGenerationService } from './services/ClassGenerationService';
 export { TestGenerationService } from './services/TestGenerationService';
+export type { TestGenerationRequest } from './services/TestGenerationService';
 export { AdminService } from './services/AdminService';
 export { FileStorageService } from './services/FileStorageService';
