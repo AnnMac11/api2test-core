@@ -1,5 +1,5 @@
 import { ApiTestDto } from '../models/ApiTestDto';
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 
 /**
  * Parameters that drive a single test-class generation.
@@ -39,8 +39,8 @@ export interface TestGenerationRequest {
     basePathMethod?: string;
     /**
      * Optional API Method Library response handler (a validator taking the response and returning
-     * bool/Task<bool>). When set, the test asserts its result — letting the handler define what
-     * "pass" means (e.g. a negative test where a 400 is the expected/passing outcome). Empty →
+     * bool/Task<bool>). When set, the test asserts its result â€” letting the handler define what
+     * "pass" means (e.g. a negative test where a 400 is the expected/passing outcome). Empty â†’
      * built-in success + content assertions.
      */
     responseHandler?: string;
@@ -69,9 +69,9 @@ export interface TestGenerationRequest {
  * (`new BodyClass().ToJson()`), whose properties are auto-populated via DataGenerator.
  */
 export class TestGenerationService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
 
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
     }
 
@@ -136,7 +136,7 @@ export class TestGenerationService {
         return this.generateId();
     }
 
-    // ── Code generation ──────────────────────────────────────────────────────────
+    // â”€â”€ Code generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /** Resolves the C# test class name: sanitised test-case name, else `${className}Tests`. */
     private resolveTestClassName(request: TestGenerationRequest): string {
@@ -221,7 +221,7 @@ export class TestGenerationService {
     }
 
     /**
-     * The `using` block — one using per library for a clear one-to-one mapping:
+     * The `using` block â€” one using per library for a clear one-to-one mapping:
      * `DataLibrary` (DataGenerator), `ApiMethodLibrary` (ApiMethods), and `GeneratedClasses`
      * (the request-body class, only when the method carries a body).
      */
@@ -239,10 +239,10 @@ export class TestGenerationService {
         return list.join('\n');
     }
 
-    /** The BaseUrl member — resolved at runtime from the selected base-path Data Library method. */
+    /** The BaseUrl member â€” resolved at runtime from the selected base-path Data Library method. */
     private baseUrlMember(request: TestGenerationRequest): string {
         const method = request.basePathMethod || 'BaseUrlMethod';
-        return `    // Base URL comes from a Data Library method — change it once there to retarget environments.\n    private string BaseUrl => new DataGenerator().${method}();`;
+        return `    // Base URL comes from a Data Library method â€” change it once there to retarget environments.\n    private string BaseUrl => new DataGenerator().${method}();`;
     }
 
     /**
@@ -329,7 +329,7 @@ ${this.responseAssertion(request, 'xunit')}
 
     /**
      * Builds the Assert section. Always reads + logs the response body. If a response handler is
-     * selected it asserts the handler's boolean result (the handler defines "pass" — e.g. a
+     * selected it asserts the handler's boolean result (the handler defines "pass" â€” e.g. a
      * negative test where a 400 is expected); otherwise it falls back to built-in success asserts.
      */
     private responseAssertion(request: TestGenerationRequest, framework: 'mstest' | 'nunit' | 'xunit'): string {

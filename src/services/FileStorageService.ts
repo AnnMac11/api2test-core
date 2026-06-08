@@ -1,13 +1,19 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { StorageProvider } from '../adapters/StorageProvider';
 
-export class FileStorageService {
+/** File-backed {@link StorageProvider} — the default store. Persists each collection as a JSON file. */
+export class FileStorageService implements StorageProvider {
     private dataPath: string;
-    
-    constructor() {
-        // Use a more appropriate path for VS Code extension data
-        this.dataPath = path.join(os.homedir(), '.vscode', 'API2Test', 'data');
+
+    /**
+     * @param dataPath - Directory to store JSON collections in. Defaults to
+     *   `~/.vscode/API2Test/data` for backward compatibility with the VS Code extension.
+     *   Non-VS-Code consumers should pass an explicit path.
+     */
+    constructor(dataPath?: string) {
+        this.dataPath = dataPath ?? path.join(os.homedir(), '.vscode', 'API2Test', 'data');
         this.ensureDataDirectory();
         this.initializeDefaultData();
     }

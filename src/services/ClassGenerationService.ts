@@ -1,7 +1,7 @@
 import { GeneratedClassDto } from '../models/GeneratedClassDto';
 import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGenerationDto';
 import { NOT_ASSIGNED } from './DataDictionaryService';
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 
 /**
  * Generates C# request-body classes from API Class Library entries.
@@ -10,15 +10,15 @@ import { FileStorageService } from './FileStorageService';
  * - Properties with inline `new DataGenerator().Method()` defaults for fields that
  *   have a Data Library method assigned.
  * - Nullable properties decorated with `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]`
- *   for optional fields with no assigned method — these are simply omitted from the
+ *   for optional fields with no assigned method â€” these are simply omitted from the
  *   serialised JSON so the API uses its own default.
  * - Mandatory fields with no assigned method get a safe empty default plus a TODO comment.
  * - A `ToJson()` helper that serialises the instance to a JSON string.
  */
 export class ClassGenerationService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
 
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
     }
 
@@ -28,9 +28,14 @@ export class ClassGenerationService {
      *
      * @param request - Class generation parameters including fields and class name.
      * @returns The generated C# source code, or `null` if the endpoint has no body fields
-     *   (a request-body class would be empty — path/query params are handled in the test instead).
+     *   (a request-body class would be empty â€” path/query params are handled in the test instead).
      */
-    async generateClass(request: ClassGenerationRequest): Promise<string | null> {
+    /**
+     * Renders the C# class source **without persisting**. Returns `null` when the endpoint has
+     * no body fields (a request-body class would be empty). Used by the {@link CodeEmitter} and
+     * for live preview; {@link generateClass} wraps this and saves a record.
+     */
+    renderClassCode(request: ClassGenerationRequest): string | null {
         // Only body fields become serialised class properties.
         // Path/query/header params are substituted into the URL by the generated test.
         const bodyFields = request.fieldConfigurations.filter(f => (f.location || 'body') === 'body');
@@ -42,12 +47,16 @@ export class ClassGenerationService {
 
         // Form-encoded specs (e.g. Stripe) also get a ToFormBody(); JSON specs are unchanged.
         const isForm = (request.contentType || '').toLowerCase().includes('x-www-form-urlencoded');
+        return this.generateClassCodeInternal(className, bodyFields, 'GeneratedClasses', isForm);
+    }
 
-        // Flat generation: one property per field. The dictionary mirrors the body's top-level
-        // shape, so object/array fields are single `object` properties initialised by a data
-        // method that returns that shape (StripeAddress → object, StripeTaxIds → array). No nested
-        // companion classes (which avoids cross-class name collisions entirely).
-        const classCode = this.generateClassCodeInternal(className, bodyFields, 'GeneratedClasses', isForm);
+    async generateClass(request: ClassGenerationRequest): Promise<string | null> {
+        const classCode = this.renderClassCode(request);
+        if (classCode === null) {
+            return null;
+        }
+
+        const className = this.resolveClassName(request);
 
         const record: GeneratedClassDto = {
             id: this.generateId(),
@@ -92,7 +101,7 @@ export class ClassGenerationService {
         await this.fileStorage.deleteItem('generated-classes.json', id);
     }
 
-    // ── Nested code generation (schema-driven) ───────────────────────────────────
+    // â”€â”€ Nested code generation (schema-driven) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private tryParseSchema(json?: string): any {
         if (!json) { return null; }
@@ -109,10 +118,10 @@ export class ClassGenerationService {
      *
      * @remarks
      * Walks the schema tree:
-     * - **object** property → a nested companion class; the property is initialised `= new Child();`
-     * - **array of objects** → `List<Child>` initialised with one element
-     * - **array of scalars** → `List<T>` (one generated element if the field has a data method)
-     * - **scalar** → property via {@link generateProperty} (DataGenerator default / TODO / nullable)
+     * - **object** property â†’ a nested companion class; the property is initialised `= new Child();`
+     * - **array of objects** â†’ `List<Child>` initialised with one element
+     * - **array of scalars** â†’ `List<T>` (one generated element if the field has a data method)
+     * - **scalar** â†’ property via {@link generateProperty} (DataGenerator default / TODO / nullable)
      *
      * Each leaf's data method is looked up from `fields` by its dot-path name.
      */
@@ -184,12 +193,12 @@ export class ClassGenerationService {
         ].filter(Boolean).join('\n');
 
         // Root class first, nested classes after (nested were pushed during recursion before root completes,
-        // so reverse to put the root — pushed last — at the top for readability).
+        // so reverse to put the root â€” pushed last â€” at the top for readability).
         const ordered = classes.slice().reverse();
         return `${usings}\n\nnamespace ${namespace}\n{\n${ordered.join('\n\n')}\n}`;
     }
 
-    /** Naive singulariser for array-element class names (tags → Tag, addresses → Address). */
+    /** Naive singulariser for array-element class names (tags â†’ Tag, addresses â†’ Address). */
     private singular(word: string): string {
         if (word.endsWith('ies') && word.length > 3) { return word.slice(0, -3) + 'y'; }
         if (word.endsWith('ses') && word.length > 3) { return word.slice(0, -2); }
@@ -197,7 +206,7 @@ export class ClassGenerationService {
         return word;
     }
 
-    // ── Code generation ──────────────────────────────────────────────────────────
+    // â”€â”€ Code generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private resolveClassName(request: ClassGenerationRequest): string {
         const raw = request.className || this.deriveClassName(request.application, request.endpoint);
@@ -218,7 +227,7 @@ export class ClassGenerationService {
     /**
      * Ensures a string is a valid C# identifier: strips any non-alphanumeric characters
      * (hyphens, spaces, dots, etc.) and prefixes an underscore if it would start with a digit.
-     * e.g. `"ABC-WebsiteCreateUser"` → `"ABCWebsiteCreateUser"`.
+     * e.g. `"ABC-WebsiteCreateUser"` â†’ `"ABCWebsiteCreateUser"`.
      */
     private sanitizeClassName(name: string): string {
         const cleaned = name.replace(/[^A-Za-z0-9]/g, '');
@@ -281,9 +290,9 @@ ${properties}${this.serializerMethods(isForm)}
      * Every property carries a `[JsonPropertyName("<originalFieldName>")]` attribute so the
      * serialised JSON keys match the real API contract exactly, regardless of the PascalCase
      * C# property name. Three value cases:
-     * 1. **Assigned data method** — non-nullable, initialised with `new DataGenerator().Method()`.
-     * 2. **Mandatory, no method** — non-nullable with safe empty default and TODO comment.
-     * 3. **Optional, no method** — nullable + `[JsonIgnore]` so the field is omitted from JSON.
+     * 1. **Assigned data method** â€” non-nullable, initialised with `new DataGenerator().Method()`.
+     * 2. **Mandatory, no method** â€” non-nullable with safe empty default and TODO comment.
+     * 3. **Optional, no method** â€” nullable + `[JsonIgnore]` so the field is omitted from JSON.
      */
     private generateProperty(field: FieldConfiguration): string {
         const csType  = this.getCSharpType(field.type);
@@ -296,18 +305,18 @@ ${properties}${this.serializerMethods(isForm)}
         }
 
         if (field.required) {
-            // Mandatory field — must appear in the JSON body but has no data method yet.
+            // Mandatory field â€” must appear in the JSON body but has no data method yet.
             const emptyDefault = this.getEmptyDefault(field.type);
             return `${jsonName} public ${csType} ${propName} { get; set; } = ${emptyDefault}; // TODO: assign a data method in the Data Dictionary`;
         }
 
-        // Optional, unassigned — omit from JSON if null (API will use its own default).
+        // Optional, unassigned â€” omit from JSON if null (API will use its own default).
         return `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ${jsonName} public ${csType}? ${propName} { get; set; }`;
     }
 
     /**
      * Builds the `new DataGenerator().Method(args)` call for a field, passing the field's
-     * optional `dataMethodArgs` verbatim inside the parentheses (empty → no args → method defaults).
+     * optional `dataMethodArgs` verbatim inside the parentheses (empty â†’ no args â†’ method defaults).
      */
     private dataCall(field: FieldConfiguration): string {
         const args = (field.dataMethodArgs || '').trim();
@@ -339,7 +348,7 @@ ${properties}${this.serializerMethods(isForm)}
             case 'bool': case 'boolean': return 'bool';
             case 'datetime': case 'date': return 'DateTime';
             // Object AND array fields use `object` so the property can hold whatever the assigned
-            // data method returns (Dictionary, List<string>, List<Dictionary>, …) without type
+            // data method returns (Dictionary, List<string>, List<Dictionary>, â€¦) without type
             // mismatches. ToFormBody/ToJson serialise the runtime value correctly.
             case 'array':    return 'object';
             case 'object':   return 'object';

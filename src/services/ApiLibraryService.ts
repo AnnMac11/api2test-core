@@ -1,4 +1,4 @@
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 import { PostmanParserService } from './PostmanParserService';
 import { OpenApiParserService } from './OpenApiParserService';
 import { ApiFormatDetector } from './ApiFormatDetector';
@@ -6,13 +6,13 @@ import { ApiFormatAdapter } from './ApiFormatAdapter';
 import { ApiMethodDto } from '../models/ApiMethodDto';
 
 export class ApiLibraryService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
     private postmanParser: PostmanParserService;
     private openApiParser: OpenApiParserService;
     private formatDetector: ApiFormatDetector;
     private formatAdapter: ApiFormatAdapter;
     
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
         this.postmanParser = new PostmanParserService();
         this.openApiParser = new OpenApiParserService();

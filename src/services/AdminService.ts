@@ -1,10 +1,10 @@
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 import { ApplicationDto } from '../models/ApplicationDto';
 
 export class AdminService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
     
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
     }
     

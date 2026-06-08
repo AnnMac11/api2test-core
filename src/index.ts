@@ -4,13 +4,16 @@
  * Public surface: the data models (DTOs) and the engine services. Consumers (VS Code
  * extension, web/enterprise app, Jira app) provide their own UI and wire storage/deploy/emit.
  *
- * Note: storage is currently the file-based {@link FileStorageService}. The `StorageProvider`
- * and `CodeEmitter` adapter interfaces (to support File/SQL/Mongo storage and C#/Python output)
- * are introduced incrementally — see ./adapters.
+ * Storage, code emission, and deploy are pluggable via the adapter interfaces in ./adapters
+ * (StorageProvider — File/SQL/Mongo; CodeEmitter — C#/Python; DeployTarget — local/PR), selected
+ * by the consumer at install time. Defaults today: FileStorageService + CSharpEmitter.
  */
 
 // ── Models (DTOs) ──────────────────────────────────────────────────────────────
 export * from './models';
+
+// ── Adapters (pluggable storage / emit / deploy) ─────────────────────────────────
+export * from './adapters';
 
 // ── Engine services ────────────────────────────────────────────────────────────
 export { ApiFormatAdapter } from './services/ApiFormatAdapter';

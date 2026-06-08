@@ -2,19 +2,19 @@ import { ApiClassLibraryDto, ApiClassLibraryFieldDto } from '../models/ApiClassL
 import { ApiMethodDto } from '../models/ApiMethodDto';
 import { DataDictionaryField } from '../models/DataDictionaryDto';
 import { NOT_ASSIGNED } from './DataDictionaryService';
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 
 /**
- * Service for managing the API Class Library — a collection of class entries
+ * Service for managing the API Class Library â€” a collection of class entries
  * that link imported API endpoints to their Data Dictionary fields.
  *
  * Each entry stores enough information to generate a C# request-body class at
  * any time, even after the source endpoint has been deleted.
  */
 export class ApiClassLibraryService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
 
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
     }
 
@@ -102,15 +102,15 @@ export class ApiClassLibraryService {
         await this.fileStorage.deleteItem('api-class-library.json', id);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Generates a PascalCase C# class name from the application name and API name.
-     * e.g. application="ABC Website", apiName="addPet" → "ABCWebsiteAddpet"
+     * e.g. application="ABC Website", apiName="addPet" â†’ "ABCWebsiteAddpet"
      */
     private generateClassName(application: string, apiName: string): string {
         const pascalCase = (s: string) => s
-            .replace(/[^A-Za-z0-9]+/g, ' ')   // split on any non-alphanumeric (hyphen, space, dot, slash…)
+            .replace(/[^A-Za-z0-9]+/g, ' ')   // split on any non-alphanumeric (hyphen, space, dot, slashâ€¦)
             .split(' ')
             .filter(Boolean)
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))

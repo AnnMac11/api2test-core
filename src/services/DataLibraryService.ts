@@ -1,17 +1,17 @@
 import { DataMethodDto } from '../models/DataMethodDto';
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 
 /**
- * Service for managing the Data Library — the collection of reusable C# data-generation
+ * Service for managing the Data Library â€” the collection of reusable C# data-generation
  * methods used to populate test data during code generation.
  *
  * All reads normalise PascalCase JSON properties (legacy backend format) to camelCase
  * so consumers always receive a consistent {@link DataMethodDto} shape.
  */
 export class DataLibraryService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
 
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
     }
 
@@ -27,7 +27,7 @@ export class DataLibraryService {
     /**
      * Returns a single data method by ID.
      * Routes through {@link getDataMethods} to ensure PascalCase normalisation is applied
-     * before the ID comparison — the raw JSON uses `Id` (PascalCase) while callers
+     * before the ID comparison â€” the raw JSON uses `Id` (PascalCase) while callers
      * always work with `id` (camelCase).
      * @param id - The unique identifier of the method to retrieve.
      * @returns The matching {@link DataMethodDto}, or `undefined` if not found.
@@ -62,7 +62,7 @@ export class DataLibraryService {
         await this.fileStorage.deleteItem('data-library.json', id);
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────────
+    // â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Normalises a raw JSON record from data-library.json to a {@link DataMethodDto}.

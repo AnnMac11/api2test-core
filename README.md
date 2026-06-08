@@ -32,14 +32,22 @@ npm install
 npm run build      # → dist/
 ```
 
-## Roadmap (adapters)
+## Adapters (`src/adapters`)
 
-The engine is being decoupled from its concrete file storage and C# emission so consumers can
-configure them at install time:
+The engine is decoupled from concrete storage, language, and delivery so consumers configure
+them at install time. Every service depends on `StorageProvider`, not a concrete store.
 
-- **StorageProvider** — File (now) · SqlServer · MongoDB
-- **CodeEmitter** — C# (now) · Python
-- **DeployTarget** — local file (VS Code) · repo PR (enterprise/Jira)
+- **StorageProvider** — File (`FileStorageService`, default) · SqlServer · MongoDB *(future)*
+- **CodeEmitter** — C# (`CSharpEmitter`, default) · Python *(future)*
+- **DeployTarget** — local folder (VS Code) · repo PR (enterprise / Jira) *(future)*
+
+```ts
+import { FileStorageService, CSharpEmitter } from 'api2test-core';
+
+const storage = new FileStorageService('/path/to/data'); // or SQL/Mongo provider
+const emitter = new CSharpEmitter(storage);              // or PythonEmitter
+const code = emitter.emitRequestClass(request);          // pure render, no persistence
+```
 
 `api2test-e2e` (the API-chaining / E2E layer) and the Epic2Test layer build **on top** of this
 package and are kept in separate packages (E2E is **not** shipped to the VS Code extension).

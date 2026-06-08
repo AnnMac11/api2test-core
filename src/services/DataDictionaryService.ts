@@ -1,6 +1,6 @@
 import { DataDictionaryField } from '../models/DataDictionaryDto';
 import { DataMethodDto } from '../models/DataMethodDto';
-import { FileStorageService } from './FileStorageService';
+import { StorageProvider } from '../adapters/StorageProvider';
 
 /**
  * Sentinel value stored on a {@link DataDictionaryField} when no matching
@@ -10,7 +10,7 @@ import { FileStorageService } from './FileStorageService';
 export const NOT_ASSIGNED = 'Not Assigned';
 
 /**
- * Service for managing the Data Dictionary — the catalogue of API field
+ * Service for managing the Data Dictionary â€” the catalogue of API field
  * definitions used by the code generator to produce typed, realistic test data.
  *
  * Responsibilities:
@@ -24,9 +24,9 @@ export const NOT_ASSIGNED = 'Not Assigned';
  * them into {@link autoMatchDataMethods}.
  */
 export class DataDictionaryService {
-    private fileStorage: FileStorageService;
+    private fileStorage: StorageProvider;
 
-    constructor(fileStorage: FileStorageService) {
+    constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
     }
 
@@ -107,7 +107,7 @@ export class DataDictionaryService {
         );
     }
 
-    // ── Field extraction ─────────────────────────────────────────────────────────
+    // â”€â”€ Field extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Extracts {@link DataDictionaryField} entries from a single imported API endpoint.
@@ -115,20 +115,20 @@ export class DataDictionaryService {
      * @remarks
      * Extraction is attempted in priority order, stopping as soon as any source yields fields:
      *
-     * 1. **Body fields** (`location: 'body'`) — parsed from `endpoint.requestBodyTemplate`,
+     * 1. **Body fields** (`location: 'body'`) â€” parsed from `endpoint.requestBodyTemplate`,
      *    or from `endpoint.responseExamples` if there is no body. Postman array format
      *    `[{ key, value, type, required? }]` and plain JSON objects are both supported.
-     * 2. **URL parameters** (`location: 'path'|'query'`) — taken from `endpoint.parameterDetails`
+     * 2. **URL parameters** (`location: 'path'|'query'`) â€” taken from `endpoint.parameterDetails`
      *    for **every** HTTP method. As a fallback, any `{param}` placeholders in the endpoint
      *    path are extracted (braces stripped) when no structured details exist.
      *
-     * There is no generic catch-all field anymore — an endpoint with no body and no
+     * There is no generic catch-all field anymore â€” an endpoint with no body and no
      * parameters simply yields no fields.
      *
      * When `checkDuplicates` is `true` (default), each candidate field is checked against
      * the existing dictionary with {@link checkDuplicateField}; duplicates are silently dropped
      * and `sourceEndpointId` is set on surviving fields. When `false`, all fields are returned
-     * without any I/O — useful for computing counts before filtering.
+     * without any I/O â€” useful for computing counts before filtering.
      *
      * @param endpoint - The imported API endpoint record (an {@link ApiMethodDto}-shaped object).
      * @param checkDuplicates - Whether to filter out fields already in the dictionary. Defaults to `true`.
@@ -148,7 +148,7 @@ export class DataDictionaryService {
                 const schema = JSON.parse(endpoint.requestBodySchema);
                 this.extractFieldsFromSchema(schema, '', fields);
             } catch {
-                // unparseable schema — fall through to template
+                // unparseable schema â€” fall through to template
             }
         }
 
@@ -175,7 +175,7 @@ export class DataDictionaryService {
                     this.extractFieldsFromObject(body, '', fields);
                 }
             } catch {
-                // unparseable body template — skip
+                // unparseable body template â€” skip
             }
         }
 
@@ -185,11 +185,11 @@ export class DataDictionaryService {
                 const examples = JSON.parse(endpoint.responseExamples);
                 this.extractFieldsFromObject(examples, '', fields);
             } catch {
-                // unparseable — skip
+                // unparseable â€” skip
             }
         }
 
-        // 2. URL parameters (location: 'path' | 'query') — for ALL HTTP methods.
+        // 2. URL parameters (location: 'path' | 'query') â€” for ALL HTTP methods.
         const paramDetails = Array.isArray(endpoint.parameterDetails) ? endpoint.parameterDetails : [];
         if (paramDetails.length > 0) {
             for (const p of paramDetails) {
@@ -239,12 +239,12 @@ export class DataDictionaryService {
      * Walks a resolved request-body schema, creating Data Dictionary leaf fields.
      *
      * @remarks
-     * - **Object** properties are containers — no row is created for them; recursion
+     * - **Object** properties are containers â€” no row is created for them; recursion
      *   produces dot-notation leaves (e.g. `category.id`, `category.name`).
-     * - **Array of objects** — no row for the array; element fields become dot-notation
+     * - **Array of objects** â€” no row for the array; element fields become dot-notation
      *   rows (e.g. `tags.id`, `tags.name`).
-     * - **Array of scalars** — one row for the array itself (e.g. `photoUrls`, type `array`)
-     *   → C# `List<T>`.
+     * - **Array of scalars** â€” one row for the array itself (e.g. `photoUrls`, type `array`)
+     *   â†’ C# `List<T>`.
      * - **Scalar** properties become a single typed row.
      */
     private extractFieldsFromSchema(node: any, prefix: string, fields: DataDictionaryField[]): void {
@@ -258,7 +258,7 @@ export class DataDictionaryService {
 
             // Mirror the request body's top-level shape: one row per field, typed object /
             // array / scalar (no flattening). Object & array fields are assigned a data method
-            // that returns that shape (e.g. StripeAddress → object, StripeTaxIds → array).
+            // that returns that shape (e.g. StripeAddress â†’ object, StripeTaxIds â†’ array).
             if (prop.type === 'object' && prop.properties) {
                 this.pushSchemaField(name, 'object', fields, isRequired);
             } else if (prop.type === 'array') {
@@ -297,7 +297,7 @@ export class DataDictionaryService {
             const isObject = typeof value === 'object' && value !== null && !Array.isArray(value);
 
             if (isObject) {
-                // Container — recurse, do not emit a row for the object itself.
+                // Container â€” recurse, do not emit a row for the object itself.
                 this.extractFieldsFromObject(value, fieldName, fields);
                 continue;
             }
@@ -315,13 +315,13 @@ export class DataDictionaryService {
         }
     }
 
-    // ── Data method matching ─────────────────────────────────────────────────────
+    // â”€â”€ Data method matching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Assigns the best-matching Data Library method to each field.
      *
      * @remarks
-     * This is a **pure synchronous** function — it performs no I/O. Callers must fetch
+     * This is a **pure synchronous** function â€” it performs no I/O. Callers must fetch
      * `dataMethods` via {@link DataLibraryService.getDataMethods} before calling.
      *
      * Matching is attempted via {@link findBestMatch} for each field. Fields with no
@@ -346,14 +346,14 @@ export class DataDictionaryService {
     /**
      * Finds the best matching Data Library method for a single field using a four-tier strategy:
      *
-     * 1. **Exact** — method name exactly equals field name (case-insensitive).
-     * 2. **Contains** — field name contains the method name; longest method name wins
+     * 1. **Exact** â€” method name exactly equals field name (case-insensitive).
+     * 2. **Contains** â€” field name contains the method name; longest method name wins
      *    (e.g. field `"firstName"` matches method `"FirstName"`).
-     * 3. **Reverse-contains** — method name, split on CamelCase word boundaries *before*
+     * 3. **Reverse-contains** â€” method name, split on CamelCase word boundaries *before*
      *    lowercasing, contains the field name as a whole word, or the lowercased method
      *    name contains the field name as a substring; shortest method name wins
      *    (e.g. field `"email"` matches method `"EmailAddress"`).
-     * 4. **Type-based** — only used when exactly one Data Library method has a `returnType`
+     * 4. **Type-based** â€” only used when exactly one Data Library method has a `returnType`
      *    matching the field's `fieldType`; avoids false positives when many methods share a type.
      *
      * @param field - The field to find a match for.
@@ -365,17 +365,17 @@ export class DataDictionaryService {
         dataMethods: DataMethodDto[]
     ): DataMethodDto | undefined {
         // TYPE FIRST: only consider methods whose return *kind* matches the field's kind
-        // (object field → object-returning methods, array → array methods, scalar → scalar).
+        // (object field â†’ object-returning methods, array â†’ array methods, scalar â†’ scalar).
         // This stops an object field like `address` from matching the scalar `Address()` by name.
         const fieldKind = this.kindOf(field.fieldType);
         const candidates = dataMethods.filter(dm => this.kindOf(dm.returnType) === fieldKind);
         if (candidates.length === 0) { return undefined; }
 
-        // Match on the LEAF segment of a dot-path (category.name → "name"), singularising
-        // plural array names (photoUrls → "photourl") so they hit url/string methods.
+        // Match on the LEAF segment of a dot-path (category.name â†’ "name"), singularising
+        // plural array names (photoUrls â†’ "photourl") so they hit url/string methods.
         const leaf = field.fieldName.split('.').pop() || field.fieldName;
         // Normalise away case AND separators so snake_case / kebab-case fields match
-        // CamelCase methods (e.g. "postal_code" → "postalcode" matches "PostalCode").
+        // CamelCase methods (e.g. "postal_code" â†’ "postalcode" matches "PostalCode").
         const fieldName = this.normalizeForMatch(this.singularize(leaf.toLowerCase()));
 
         // 1. Exact name match (separator-insensitive)
@@ -393,8 +393,8 @@ export class DataDictionaryService {
             .sort((a, b) => b.methodName.length - a.methodName.length);
         if (contains.length > 0) { return contains[0]; }
 
-        // 3. Field name contained within method name — split on CamelCase before lowercasing
-        //    (e.g. method "EmailAddress" → words ["email","address"] → matches field "email").
+        // 3. Field name contained within method name â€” split on CamelCase before lowercasing
+        //    (e.g. method "EmailAddress" â†’ words ["email","address"] â†’ matches field "email").
         const reverseContains = candidates
             .filter(dm => {
                 const words = dm.methodName
@@ -406,7 +406,7 @@ export class DataDictionaryService {
             .sort((a, b) => a.methodName.length - b.methodName.length);
         if (reverseContains.length > 0) { return reverseContains[0]; }
 
-        // 4. Type fallback — if the kind has exactly one candidate method, use it
+        // 4. Type fallback â€” if the kind has exactly one candidate method, use it
         //    (e.g. an object field with a single object-returning method).
         if (candidates.length === 1) { return candidates[0]; }
 
@@ -421,7 +421,7 @@ export class DataDictionaryService {
         return 'scalar';
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Strips case and all non-alphanumeric separators for matching, so `snake_case`,
@@ -433,7 +433,7 @@ export class DataDictionaryService {
         return word.toLowerCase().replace(/[^a-z0-9]/g, '');
     }
 
-    /** Naive singulariser for matching plural array names (photoUrls → photoUrl, tags → tag, statuses → status). */
+    /** Naive singulariser for matching plural array names (photoUrls â†’ photoUrl, tags â†’ tag, statuses â†’ status). */
     private singularize(word: string): string {
         if (word.endsWith('ies') && word.length > 3) { return word.slice(0, -3) + 'y'; }
         if (word.endsWith('ses') && word.length > 3) { return word.slice(0, -2); }
@@ -450,14 +450,14 @@ export class DataDictionaryService {
     private getFieldType(value: any): string {
         if (value === null) { return 'string'; }
         if (typeof value === 'boolean') { return 'boolean'; }
-        // Distinguish whole numbers (integer → C# int) from fractional numbers (decimal).
+        // Distinguish whole numbers (integer â†’ C# int) from fractional numbers (decimal).
         if (typeof value === 'number') { return Number.isInteger(value) ? 'integer' : 'number'; }
         if (Array.isArray(value)) { return 'array'; }
         if (typeof value === 'object') { return 'object'; }
         return 'string';
     }
 
-    /** Infers mandatory status from a sample value — a non-empty, non-null value implies the field is required. */
+    /** Infers mandatory status from a sample value â€” a non-empty, non-null value implies the field is required. */
     private isFieldMandatory(value: any): boolean {
         return value !== null && value !== undefined && value !== '';
     }
