@@ -25,12 +25,17 @@ src/
 resources/data/                 # seed Data Library + API Method Library + applications
 ```
 
-## Build
+## Build & test
 
 ```bash
 npm install
 npm run build      # → dist/
+npm test           # node:test runner over test/**/*.test.ts (via tsx)
 ```
+
+`api2test-core` has its **own** test project (`test/`) — plain Node unit tests with no Electron,
+separate from the VS Code extension's UI/webview harness. It tests the engine directly: storage
+CRUD, type-first data-method matching, and C# emission.
 
 ## Adapters (`src/adapters`)
 
