@@ -1,0 +1,11 @@
+{
+  "types": [
+    { "id": "1", "name": "string" },
+    { "id": "2", "name": "int" },
+    { "id": "3", "name": "boolean" },
+    { "id": "4", "name": "decimal" },
+    { "id": "5", "name": "date" },
+    { "id": "6", "name": "datetime" },
+    { "id": "7", "name": "guid" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "applications": [
+    {
+      "id": "1",
+      "name": "HR"
+    },
+    {
+      "id": "2",
+      "name": "ABC-Website"
+    },
+    {
+      "id": "3",
+      "name": "PetStore"
+    },
+    {
+      "id": "4",
+      "name": "Stripe"
+    }
+  ]
+}

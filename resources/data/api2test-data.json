@@ -1,0 +1,44 @@
+[
+  {
+    "Id": "1",
+    "Name": "Sample API 1",
+    "Url": "https://api.example.com/v1",
+    "Application": "App1",
+    "Version": "1.0.0",
+    "Description": "This is a sample API for testing",
+    "UploadDate": "2025-09-09T06:44:10.1611524Z",
+    "Project": "Test Project",
+    "ApiType": "POST",
+    "RequestBody": "{\u0022name\u0022: \u0022string\u0022, \u0022email\u0022: \u0022string\u0022}",
+    "ResponseBody": "{\u0022id\u0022: \u0022number\u0022, \u0022name\u0022: \u0022string\u0022}",
+    "ImportedAt": "2025-09-09T06:44:10.1615072Z",
+    "ImportSource": "https://api.example.com/v1/users"
+  },
+  {
+    "Id": "1",
+    "Name": "UserId",
+    "Type": "int",
+    "Required": false,
+    "Description": "Unique identifier for user",
+    "Input": null,
+    "Application": "App1",
+    "Project": null,
+    "CreatedDate": "2025-09-09T06:44:10.1800674Z",
+    "UpdatedDate": "2025-09-09T06:44:10.1801318Z",
+    "Method": null,
+    "Parameters": null
+  },
+  {
+    "Id": "1",
+    "Name": "GenerateUserId",
+    "ReturnType": "int",
+    "Category": "User Management",
+    "Description": "Generates a unique user ID",
+    "Usage": null,
+    "Code": "return Guid.NewGuid().ToString();",
+    "Application": "App1",
+    "Project": null,
+    "CreatedDate": "2025-09-09T06:44:10.1869591Z",
+    "UpdatedDate": "2025-09-09T06:44:10.1870202Z"
+  }
+]

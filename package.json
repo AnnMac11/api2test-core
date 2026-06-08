@@ -1,0 +1,32 @@
+{
+  "name": "api2test-core",
+  "version": "0.1.0",
+  "description": "Shared engine for API2Test: import API specs, build a data dictionary, manage data/method/class libraries, and generate request-body classes and integration tests. UI-agnostic; consumed by the VS Code extension, the web/enterprise app, and (later) the Jira app.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "resources"
+  ],
+  "scripts": {
+    "build": "tsc -p ./",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.4.0"
+  },
+  "keywords": [
+    "api",
+    "testing",
+    "openapi",
+    "postman",
+    "code-generation"
+  ]
+}
