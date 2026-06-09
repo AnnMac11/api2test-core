@@ -408,9 +408,12 @@ export class DataDictionaryService {
             .sort((a, b) => a.methodName.length - b.methodName.length);
         if (reverseContains.length > 0) { return reverseContains[0]; }
 
-        // 4. Type fallback â€” if the kind has exactly one candidate method, use it
-        //    (e.g. an object field with a single object-returning method).
-        if (candidates.length === 1) { return candidates[0]; }
+        // 4. Type fallback — if the kind has exactly one candidate method, use it.
+        //    Skipped for OBJECT fields: object methods are specific shapes (e.g. a Stripe
+        //    Address generator), so blindly assigning the only object method to every
+        //    unmatched object field (shipping, cash_balance, tax, …) is wrong — worse than
+        //    leaving it unassigned for the user to pick. Scalars/arrays keep the fallback.
+        if (candidates.length === 1 && fieldKind !== 'object') { return candidates[0]; }
 
         return undefined;
     }
