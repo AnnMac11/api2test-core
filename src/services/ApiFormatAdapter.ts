@@ -118,9 +118,13 @@ export class ApiFormatAdapter {
                 // application/x-www-form-urlencoded, …) so generation can pick JSON vs form encoding.
                 const bodyMediaType = this.bodyMediaType(op);
 
-                // Response example — OpenAPI v3 and v2 schema.
-                const responseExample = op.responses?.['200']?.content?.['application/json']?.example
-                    || this.generateExampleFromSchema(spec, op.responses?.['200']?.schema);
+                // Response example — OpenAPI v3 (responses[code].content[json].schema, a $ref)
+                // and Swagger v2 (responses[code].schema). $refs are resolved downstream.
+                const resp = op.responses?.['200'] || op.responses?.['201'] || op.responses?.['default'];
+                const respJson = resp?.content?.['application/json']
+                    || (resp?.content ? (Object.values(resp.content)[0] as any) : null);
+                const responseExample = respJson?.example
+                    || this.generateExampleFromSchema(spec, respJson?.schema || resp?.schema);
 
                 endpoints.push({
                     name,
