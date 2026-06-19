@@ -196,6 +196,7 @@ export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EG
     'using System.Net.Http;',
     'using System.Threading.Tasks;',
     fwUsing,
+    'using static ApiTests.ApiMethods;', // helper methods are called by bare name
     '',
     'namespace ApiTests',
     '{',

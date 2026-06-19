@@ -35,6 +35,7 @@ test('create→delete chain generates a complete, correctly-wired MSTest file', 
   const code = generateTestForRow(row, page, ctx);
 
   assert.match(code, /using Microsoft\.VisualStudio\.TestTools\.UnitTesting;/);
+  assert.match(code, /using static ApiTests\.ApiMethods;/);
   assert.match(code, /namespace ApiTests/);
   assert.match(code, /\[TestClass\]/);
   assert.match(code, /public class StripeCustomerTests/);
