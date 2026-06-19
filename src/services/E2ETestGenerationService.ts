@@ -1,4 +1,5 @@
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, TestFramework, E2EGenContext } from '../models/E2EDto';
+import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
 
 /**
  * E2E test generation — turns an explicit, user-authored chain (E2ECaseItem[]) into a
@@ -196,9 +197,10 @@ export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EG
     'using System.Net.Http;',
     'using System.Threading.Tasks;',
     fwUsing,
-    'using static ApiTests.ApiMethods;', // helper methods are called by bare name
+    `using static ${librariesNs()}.ApiMethods;`, // helper methods are called by bare name
+    `using ${classesNs(page.application)};`,      // request classes (e.g. new StripePostCustomers())
     '',
-    'namespace ApiTests',
+    `namespace ${testsNs(page.application)}`,
     '{',
     ...(classAttr ? [`    ${classAttr}`] : []),
     `    public class ${methodName(row.name)}Tests`,

@@ -2,6 +2,7 @@ import { GeneratedClassDto } from '../models/GeneratedClassDto';
 import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGenerationDto';
 import { NOT_ASSIGNED } from './DataDictionaryService';
 import { StorageProvider } from '../adapters/StorageProvider';
+import { classesNs, librariesNs } from './generatedNamespaces';
 
 /**
  * Generates C# request-body classes from API Class Library entries.
@@ -47,7 +48,7 @@ export class ClassGenerationService {
 
         // Form-encoded specs (e.g. Stripe) also get a ToFormBody(); JSON specs are unchanged.
         const isForm = (request.contentType || '').toLowerCase().includes('x-www-form-urlencoded');
-        return this.generateClassCodeInternal(className, bodyFields, 'GeneratedClasses', isForm);
+        return this.generateClassCodeInternal(className, bodyFields, classesNs(request.application), isForm);
     }
 
     async generateClass(request: ClassGenerationRequest): Promise<string | null> {
@@ -66,7 +67,7 @@ export class ClassGenerationService {
             method: request.method,
             application: request.application,
             createdDate: new Date().toISOString(),
-            namespace: 'GeneratedClasses'
+            namespace: classesNs(request.application)
         };
 
         await this.fileStorage.addItem('generated-classes.json', record);
@@ -188,8 +189,7 @@ export class ClassGenerationService {
             usesList ? 'using System.Collections.Generic;' : null,
             'using System.Text.Json;',
             'using System.Text.Json.Serialization;',
-            usesDataMethods ? 'using DataLibrary;' : null,        // DataGenerator defaults
-            isForm ? 'using ApiMethodLibrary;' : null              // ApiMethods.FormUrlEncode
+            (usesDataMethods || isForm) ? `using ${librariesNs()};` : null, // DataGenerator + ApiMethods
         ].filter(Boolean).join('\n');
 
         // Root class first, nested classes after (nested were pushed during recursion before root completes,
@@ -247,8 +247,7 @@ export class ClassGenerationService {
             'using System;',
             'using System.Text.Json;',
             'using System.Text.Json.Serialization;',
-            hasDataMethods ? 'using DataLibrary;' : null,         // DataGenerator defaults
-            isForm ? 'using ApiMethodLibrary;' : null              // ApiMethods.FormUrlEncode
+            (hasDataMethods || isForm) ? `using ${librariesNs()};` : null, // DataGenerator + ApiMethods
         ].filter(Boolean).join('\n');
 
         const properties = fields

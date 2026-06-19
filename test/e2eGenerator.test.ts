@@ -35,8 +35,9 @@ test('create→delete chain generates a complete, correctly-wired MSTest file', 
   const code = generateTestForRow(row, page, ctx);
 
   assert.match(code, /using Microsoft\.VisualStudio\.TestTools\.UnitTesting;/);
-  assert.match(code, /using static ApiTests\.ApiMethods;/);
-  assert.match(code, /namespace ApiTests/);
+  assert.match(code, /using static Api2Test\.Generated\.Libraries\.ApiMethods;/);
+  assert.match(code, /using Api2Test\.Generated\.Classes\.Stripe;/);
+  assert.match(code, /namespace Api2Test\.Generated\.Tests\.Stripe/);
   assert.match(code, /\[TestClass\]/);
   assert.match(code, /public class StripeCustomerTests/);
   assert.match(code, /var result1 = await PostFormAsync\(token, baseUrl \+ "\/v1\/customers", new StripePostCustomers\(\)\.ToFormBody\(\)\);/);

@@ -31,6 +31,9 @@ export type { TestGenerationRequest } from './services/TestGenerationService';
 export { AdminService } from './services/AdminService';
 export { FileStorageService } from './services/FileStorageService';
 
+// Generated-artifact namespaces/folders (single source of truth across all generators).
+export { GENERATED_ROOT, librariesNs, classesNs, testsNs, librariesDir, classesDir, testsDir, nsSegment } from './services/generatedNamespaces';
+
 // E2E chain generation + local test runner (lifted from the enterprise app — shared by all editions).
 export { generateTestForRow, methodName as e2eMethodName } from './services/E2ETestGenerationService';
 export { parseTrx, runDotnetTest, methodNameOf, outcomeToStatus } from './services/TestRunnerService';
