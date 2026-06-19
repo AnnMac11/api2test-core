@@ -13,3 +13,4 @@ export * from './ApiTestDto';
 export * from './ApplicationDto';
 export * from './UnifiedApiDto';
 export * from './ClassGenerationDto';
+export * from './E2EDto';
