@@ -78,6 +78,33 @@ export function runDotnetTest(projectPath: string, opts: { timeoutMs?: number; f
   });
 }
 
+export interface BuildResult {
+  /** True when the project compiled with no errors. */
+  ok: boolean;
+  /** Distinct compiler/MSBuild error lines, e.g. `ApiMethods.cs(454,82): error CS1009: ...`. */
+  errors: string[];
+  /** Tail of the build output, for context when there are no parsable error lines. */
+  raw: string;
+}
+
+/**
+ * Run `dotnet build` on a project (.csproj or folder) and collect compiler errors.
+ * Used to validate generated artifacts at deploy time — the deploy still happens, but the caller
+ * can surface "deployed, but does not compile yet" with the first error.
+ */
+export function runDotnetBuild(projectPath: string, opts: { timeoutMs?: number } = {}): Promise<BuildResult> {
+  return new Promise((resolve) => {
+    execFile('dotnet', ['build', projectPath, '--nologo'], { timeout: opts.timeoutMs ?? 240_000, maxBuffer: 32 * 1024 * 1024, env: process.env }, (err, stdout, stderr) => {
+      const out = `${stdout || ''}\n${stderr || ''}`;
+      const errors = Array.from(new Set(
+        out.split(/\r?\n/).map(l => l.trim()).filter(l => /:\s*error\s/i.test(l)),
+      ));
+      if (err && errors.length === 0) errors.push((stderr || stdout || 'dotnet build failed').toString().trim().slice(-400));
+      resolve({ ok: !err && errors.length === 0, errors, raw: out.slice(-2000) });
+    });
+  });
+}
+
 /** A test case's generated C# method name (mirrors the E2E generator's methodName()). */
 export function methodNameOf(caseName: string): string {
   const cleaned = (caseName || 'TestCase').replace(/[^a-zA-Z0-9]+/g, ' ').trim()

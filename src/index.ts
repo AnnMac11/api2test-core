@@ -38,5 +38,5 @@ export type { DataMethodCode } from './services/generateDataLibrary';
 
 // E2E chain generation + local test runner (lifted from the enterprise app — shared by all editions).
 export { generateTestForRow, methodName as e2eMethodName } from './services/E2ETestGenerationService';
-export { parseTrx, runDotnetTest, methodNameOf, outcomeToStatus } from './services/TestRunnerService';
-export type { RawTestResult } from './services/TestRunnerService';
+export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus } from './services/TestRunnerService';
+export type { RawTestResult, BuildResult } from './services/TestRunnerService';
