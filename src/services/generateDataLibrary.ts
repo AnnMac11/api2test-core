@@ -35,6 +35,7 @@ namespace ${librariesNs(root)}
     public class DataGenerator
     {
         private readonly Faker _faker = new Faker();
+        private readonly Random _random = new Random();
 
 ${body}
     }
