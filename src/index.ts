@@ -33,6 +33,8 @@ export { FileStorageService } from './services/FileStorageService';
 
 // Generated-artifact namespaces/folders (single source of truth across all generators).
 export { GENERATED_ROOT, librariesNs, classesNs, testsNs, librariesDir, classesDir, testsDir, nsSegment } from './services/generatedNamespaces';
+export { generateDataLibraryCode } from './services/generateDataLibrary';
+export type { DataMethodCode } from './services/generateDataLibrary';
 
 // E2E chain generation + local test runner (lifted from the enterprise app — shared by all editions).
 export { generateTestForRow, methodName as e2eMethodName } from './services/E2ETestGenerationService';
