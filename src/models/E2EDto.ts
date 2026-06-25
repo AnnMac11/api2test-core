@@ -27,6 +27,8 @@ export interface E2ECaseItem {
   responseVar?: string;
   /** Explicit values for remaining parameters / {placeholder} values (literal or a variable reference). */
   args?: Record<string, { value: string; isVariable?: boolean }>;
+  /** Class steps: per-test field overrides applied via object initializer (literal value or a captured variable). */
+  overrides?: Record<string, { value: string; isVariable?: boolean }>;
   /** Variable name to assign this step's result to (so later steps can reference it). */
   assignTo?: string;
 }
