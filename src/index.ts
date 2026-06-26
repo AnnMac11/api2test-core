@@ -48,5 +48,11 @@ export { getDefaultDataLibrary, getDefaultApiMethodLibrary, mergeDefaults } from
 
 // E2E chain generation + local test runner (lifted from the enterprise app — shared by all editions).
 export { generateTestForRow, methodName as e2eMethodName } from './services/E2ETestGenerationService';
+// E2E composition rules (validation, placeholders, variable scope) — shared by the builders.
+export {
+  paramsOf, placeholdersOf, takesUrlTemplate, takesFieldPath,
+  isConsumedClass, sourceEndpointKey, availableVarsBefore, validateSteps,
+} from './services/e2eCaseLogic';
+export type { MethodParamMap, PickerLike } from './services/e2eCaseLogic';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus } from './services/TestRunnerService';
 export type { RawTestResult, BuildResult } from './services/TestRunnerService';
