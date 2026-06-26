@@ -24,9 +24,16 @@ test('accessors hand out fresh copies (mutation does not leak)', () => {
   assert.equal(getDefaultDataLibrary('csharp').length, 93);
 });
 
-test('python libraries are empty placeholders for now', () => {
-  assert.deepEqual(getDefaultDataLibrary('python'), []);
-  assert.deepEqual(getDefaultApiMethodLibrary('python'), []);
+test('python libraries mirror the csharp set (same methods, Python bodies)', () => {
+  const py = getDefaultDataLibrary('python');
+  const cs = getDefaultDataLibrary('csharp');
+  assert.equal(py.length, 93);
+  assert.equal(getDefaultApiMethodLibrary('python').length, 18);
+  // same methodNames (auto-matching parity), but Python code bodies
+  assert.deepEqual(py.map((m) => m.methodName).sort(), cs.map((m) => m.methodName).sort());
+  const firstName = py.find((m) => m.methodName === 'FirstName')!;
+  assert.match(firstName.code, /def first_name\(self\)/);
+  assert.match(firstName.code, /self\._fake\.first_name\(\)/);
 });
 
 test('mergeDefaults adds missing defaults and preserves user items', () => {
