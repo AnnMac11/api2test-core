@@ -36,6 +36,12 @@ export { GENERATED_ROOT, librariesNs, classesNs, testsNs, librariesDir, classesD
 export { generateDataLibraryCode } from './services/generateDataLibrary';
 export type { DataMethodCode } from './services/generateDataLibrary';
 
+// Licensing / entitlements — shared premium-feature gating (subscription via signed tokens).
+export type { Feature, Plan } from './licensing/features';
+export { ALL_FEATURES, PLAN_FEATURES } from './licensing/features';
+export type { Entitlement, EntitlementClaims } from './licensing/entitlements';
+export { verifyEntitlement, hasFeature, FREE_ENTITLEMENT, LICENSE_PUBLIC_KEY } from './licensing/entitlements';
+
 // Curated libraries (single source of truth) — built-in Data Library + API Method Library, keyed by
 // target language. Editions seed from these (copy-if-missing + mergeDefaults) instead of own copies.
 export { getDefaultDataLibrary, getDefaultApiMethodLibrary, mergeDefaults } from './data/defaultLibraries';
