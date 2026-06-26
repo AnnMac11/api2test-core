@@ -23,7 +23,7 @@ export { PostmanParserService } from './services/PostmanParserService';
 export { ApiLibraryService } from './services/ApiLibraryService';
 export { ApiClassLibraryService } from './services/ApiClassLibraryService';
 export { ApiMethodLibraryService } from './services/ApiMethodLibraryService';
-export { DataDictionaryService } from './services/DataDictionaryService';
+export { DataDictionaryService, NOT_ASSIGNED } from './services/DataDictionaryService';
 export { DataLibraryService } from './services/DataLibraryService';
 export { ClassGenerationService } from './services/ClassGenerationService';
 export { TestGenerationService } from './services/TestGenerationService';
