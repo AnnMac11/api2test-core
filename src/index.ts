@@ -36,6 +36,10 @@ export { GENERATED_ROOT, librariesNs, classesNs, testsNs, librariesDir, classesD
 export { generateDataLibraryCode } from './services/generateDataLibrary';
 export type { DataMethodCode } from './services/generateDataLibrary';
 
+// Curated libraries (single source of truth) — built-in Data Library + API Method Library, keyed by
+// target language. Editions seed from these (copy-if-missing + mergeDefaults) instead of own copies.
+export { getDefaultDataLibrary, getDefaultApiMethodLibrary, mergeDefaults } from './data/defaultLibraries';
+
 // E2E chain generation + local test runner (lifted from the enterprise app — shared by all editions).
 export { generateTestForRow, methodName as e2eMethodName } from './services/E2ETestGenerationService';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus } from './services/TestRunnerService';
