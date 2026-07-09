@@ -1,5 +1,7 @@
 import { ApiTestDto } from '../models/ApiTestDto';
 import { StorageProvider } from '../adapters/StorageProvider';
+import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
+import { NOT_ASSIGNED, PARAMETER } from './DataDictionaryService';
 
 /**
  * Parameters that drive a single test-class generation.
@@ -171,18 +173,23 @@ export class TestGenerationService {
         const allParams = [...(request.pathParams || []), ...(request.queryParams || [])];
         for (const p of allParams) {
             const varName = this.paramVar(p.name);
-            if (p.dataMethod && p.dataMethod !== 'Not Assigned') {
+            if (p.dataMethod && p.dataMethod !== NOT_ASSIGNED && p.dataMethod !== PARAMETER) {
                 const args = (p.dataMethodArgs || '').trim();
                 lines.push(`        var ${varName} = new DataGenerator().${p.dataMethod}(${args});`);
             } else {
+                // PARAMETER = value supplied at runtime (e.g. another API's output); otherwise unassigned.
                 const def = this.paramDefault(p.type);
-                lines.push(`        var ${varName} = ${def}; // TODO: set value`);
+                const note = p.dataMethod === PARAMETER ? 'parameter — value supplied at runtime' : 'TODO: set value';
+                lines.push(`        var ${varName} = ${def}; // ${note}`);
             }
         }
 
         // Build the URL: base + endpoint (path placeholders interpolate the declared vars),
-        // then append any query parameters.
-        let urlTemplate = '$"{BaseUrl}' + request.endpoint;
+        // then append any query parameters. Rewrite each `{param}` in the endpoint to the SANITISED
+        // variable name we declared above, so `/pets/{pet_id}` interpolates the `petid` var (not an
+        // undeclared `pet_id`, which would be CS0103).
+        const endpointInterp = request.endpoint.replace(/\{([^}]+)\}/g, (_m, p) => `{${this.paramVar(p)}}`);
+        let urlTemplate = '$"{BaseUrl}' + endpointInterp;
         const query = (request.queryParams || [])
             .map((p, i) => `${i === 0 ? '?' : '&'}${p.name}={${this.paramVar(p.name)}}`)
             .join('');
@@ -221,22 +228,22 @@ export class TestGenerationService {
     }
 
     /**
-     * The `using` block â€” one using per library for a clear one-to-one mapping:
-     * `DataLibrary` (DataGenerator), `ApiMethodLibrary` (ApiMethods), and `GeneratedClasses`
-     * (the request-body class, only when the method carries a body).
+     * The file header — `using` directives + the file-scoped test namespace — aligned with the shared
+     * `generatedNamespaces` so the test compiles against the deployed `Libraries/` and `Classes/{App}/`:
+     * ApiMethods + DataGenerator live in `librariesNs()`; request classes in `classesNs(app)`; the test
+     * itself in `testsNs(app)` (matching the E2E generator, and keeping apps from colliding).
      */
-    private usings(request: TestGenerationRequest, frameworkUsing: string): string {
+    private fileHeader(request: TestGenerationRequest, frameworkUsing: string): string {
         const list = [
             frameworkUsing,
             'using System;',
             'using System.Threading.Tasks;',
-            'using DataLibrary;',        // DataGenerator (Data Library)
-            'using ApiMethodLibrary;'    // ApiMethods (API Method Library)
+            `using ${librariesNs()};`,   // ApiMethods + DataGenerator (called qualified)
         ];
         if (this.hasBody(request.method) && request.bodyClassName) {
-            list.push('using GeneratedClasses;');   // request-body class
+            list.push(`using ${classesNs(request.application)};`);   // request-body class
         }
-        return list.join('\n');
+        return `${list.join('\n')}\n\nnamespace ${testsNs(request.application)};`;
     }
 
     /** The BaseUrl member â€” resolved at runtime from the selected base-path Data Library method. */
@@ -269,7 +276,7 @@ export class TestGenerationService {
     }
 
     private generateMSTest(request: TestGenerationRequest, cls: string): string {
-        return `${this.usings(request, 'using Microsoft.VisualStudio.TestTools.UnitTesting;')}
+        return `${this.fileHeader(request,'using Microsoft.VisualStudio.TestTools.UnitTesting;')}
 
 [TestClass]
 public class ${cls}
@@ -289,7 +296,7 @@ ${this.responseAssertion(request, 'mstest')}
     }
 
     private generateNUnit(request: TestGenerationRequest, cls: string): string {
-        return `${this.usings(request, 'using NUnit.Framework;')}
+        return `${this.fileHeader(request,'using NUnit.Framework;')}
 
 [TestFixture]
 public class ${cls}
@@ -309,7 +316,7 @@ ${this.responseAssertion(request, 'nunit')}
     }
 
     private generateXUnit(request: TestGenerationRequest, cls: string): string {
-        return `${this.usings(request, 'using Xunit;')}
+        return `${this.fileHeader(request,'using Xunit;')}
 
 public class ${cls}
 {

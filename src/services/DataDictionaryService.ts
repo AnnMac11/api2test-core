@@ -10,6 +10,15 @@ import { StorageProvider } from '../adapters/StorageProvider';
 export const NOT_ASSIGNED = 'Not Assigned';
 
 /**
+ * Reserved `dataMethod` marking a field whose value is supplied at runtime rather than generated —
+ * e.g. a parameter fed in from another API's output in a chained test. It is deliberately NOT a real
+ * Data Library method: code generation emits a plain settable placeholder property/variable for it
+ * (never a `new DataGenerator().Parameter()` call). Its purpose is to let the user tag such a field as
+ * intentionally handled, so it no longer shows as "Not Assigned" and no longer trips class generation.
+ */
+export const PARAMETER = 'Parameter';
+
+/**
  * Service for managing the Data Dictionary â€” the catalogue of API field
  * definitions used by the code generator to produce typed, realistic test data.
  *

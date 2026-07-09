@@ -32,7 +32,18 @@ export interface ApiMethodLibraryDto {
     returnType: string;
     code: string;
     category: string;
+    /**
+     * Display-only application name. Kept for readability and back-compat; NOT used for matching.
+     * The authoritative link to an application is {@link applicationId}.
+     */
     application: string;
+    /**
+     * Id of the application this method belongs to — the authoritative, rename-proof link used to
+     * filter app-scoped methods (base paths, tokens) into the right application's dropdowns. Empty/
+     * absent means a global utility helper (HTTP verbs, response/serialization helpers) available to
+     * every application. Base-path and token methods must set this.
+     */
+    applicationId?: string;
     isCustom: boolean;
     createdDate: string;
     comments?: string;

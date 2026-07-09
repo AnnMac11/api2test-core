@@ -1,6 +1,6 @@
 import { GeneratedClassDto } from '../models/GeneratedClassDto';
 import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGenerationDto';
-import { NOT_ASSIGNED } from './DataDictionaryService';
+import { NOT_ASSIGNED, PARAMETER } from './DataDictionaryService';
 import { StorageProvider } from '../adapters/StorageProvider';
 import { classesNs, librariesNs } from './generatedNamespaces';
 
@@ -303,6 +303,14 @@ ${properties}${this.serializerMethods(isForm)}
             return `${jsonName} public ${csType} ${propName} { get; set; } = ${this.dataCall(field)};`;
         }
 
+        if (field.dataMethod === PARAMETER) {
+            // Value is supplied at runtime (e.g. from another API's output) — emit a settable
+            // property with a safe default so the class compiles and the test can assign it. No
+            // DataGenerator call: PARAMETER is a placeholder, not a real Data Library method.
+            const paramDefault = this.getEmptyDefault(field.type);
+            return `${jsonName} public ${csType} ${propName} { get; set; } = ${paramDefault}; // parameter — value supplied at runtime`;
+        }
+
         if (field.required) {
             // Mandatory field â€” must appear in the JSON body but has no data method yet.
             const emptyDefault = this.getEmptyDefault(field.type);
@@ -325,7 +333,9 @@ ${properties}${this.serializerMethods(isForm)}
     private hasAssignedMethod(field: FieldConfiguration): boolean {
         return !!(field.dataMethod
             && field.dataMethod.trim() !== ''
-            && field.dataMethod !== NOT_ASSIGNED);
+            && field.dataMethod !== NOT_ASSIGNED
+            // PARAMETER is a runtime-supplied placeholder, not a generator method — handled separately.
+            && field.dataMethod !== PARAMETER);
     }
 
     private getEmptyDefault(type: string): string {

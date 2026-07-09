@@ -985,19 +985,6 @@
     "comments": "Stripe base path. Select in the Generate Test dialog; requests are form-urlencoded."
   },
   {
-    "id": "1780654987917",
-    "methodName": "PetStoreBaseUrl",
-    "returnType": "string",
-    "parameters": "",
-    "description": "Base URL for the Swagger Petstore API (scheme + host + base path, no resource).",
-    "code": "public string PetStoreBaseUrl() => \"https://petstore.swagger.io/v2\";",
-    "createdDate": "2025-01-27T00:00:00.000Z",
-    "isCustom": false,
-    "project": null,
-    "category": "Base URL",
-    "comments": "Example base-path method. Select in the Generate Test dialog."
-  },
-  {
     "id": "76",
     "methodName": "StripeAddress",
     "returnType": "Dictionary<string, string>",

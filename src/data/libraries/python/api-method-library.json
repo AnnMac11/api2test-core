@@ -45,7 +45,7 @@
     "parameters": "response:HttpResponseMessage",
     "returnType": "string",
     "code": "def extract_token_from_response(response):\n    if response.ok:\n        data = response.json()\n        return data.get(\"token\") or data.get(\"access_token\") or \"\"\n    return \"\"",
-    "category": "Authentication",
+    "category": "Response",
     "application": "Default",
     "isCustom": false,
     "createdDate": "2025-01-27T00:00:00.000Z",
@@ -79,16 +79,17 @@
   },
   {
     "id": "10",
-    "methodName": "GetStripeToken",
+    "methodName": "stripeTestToken",
     "description": "Returns the Stripe secret (test) key used as the Bearer token. Replace the placeholder with your sk_test_ key.",
     "parameters": "",
     "returnType": "Task<string>",
     "code": "def get_stripe_token():\n    key = os.environ.get(\"STRIPE_TEST_KEY\")\n    if not key:\n        raise RuntimeError(\"Set the STRIPE_TEST_KEY environment variable to your Stripe test secret key.\")\n    return key",
     "category": "Authentication",
-    "application": "Default",
+    "application": "Stripe",
     "isCustom": false,
     "createdDate": "2026-06-06T00:00:00.000Z",
-    "comments": "Stripe test-mode token provider."
+    "comments": "Stripe test-mode token provider.",
+    "applicationId": "app-stripe"
   },
   {
     "id": "11",
@@ -144,7 +145,7 @@
   },
   {
     "id": "16",
-    "methodName": "StripeBaseUrl",
+    "methodName": "stripeTestBasePath",
     "description": "Returns the Stripe API host (https://api.stripe.com). Endpoint paths already include the /v1 prefix, so the base path is the host only.",
     "parameters": "",
     "returnType": "string",
@@ -153,20 +154,8 @@
     "application": "Stripe",
     "isCustom": true,
     "createdDate": "2026-06-10T00:00:00.000Z",
-    "comments": ""
-  },
-  {
-    "id": "17",
-    "methodName": "ApiBaseUrl",
-    "description": "Template base-URL method — change the return value to your API host.",
-    "parameters": "",
-    "returnType": "string",
-    "code": "def api_base_url():\n    return \"https://api.example.com\"",
-    "category": "Base Path",
-    "application": "Default",
-    "isCustom": true,
-    "createdDate": "2026-06-10T00:00:00.000Z",
-    "comments": ""
+    "comments": "",
+    "applicationId": "app-stripe"
   },
   {
     "id": "18",
@@ -207,28 +196,108 @@
   },
   {
     "id": "21",
-    "methodName": "PetStoreBaseUrl",
+    "methodName": "petstoreTestBasePath",
     "description": "Base URL for the Swagger Petstore API.",
     "parameters": "",
     "returnType": "string",
     "code": "def pet_store_base_url():\n    return \"https://petstore.swagger.io/v2\"",
     "category": "Base Path",
-    "application": "PetStore",
+    "application": "Pet Store",
     "isCustom": false,
     "createdDate": "2026-06-25T00:00:00Z",
-    "comments": "Petstore base path for E2E suites/test cases."
+    "comments": "Petstore base path for E2E suites/test cases.",
+    "applicationId": "app-petstore"
   },
   {
     "id": "22",
-    "methodName": "GetPetStoreToken",
+    "methodName": "petstoreTestToken",
     "description": "Returns the Petstore api_key. Defaults to the public demo key 'special-key'; override with the PETSTORE_API_KEY environment variable.",
     "parameters": "",
     "returnType": "Task<string>",
     "code": "def get_pet_store_token():\n    return os.environ.get(\"PETSTORE_API_KEY\") or \"special-key\"",
     "category": "Authentication",
-    "application": "PetStore",
+    "application": "Pet Store",
     "isCustom": false,
     "createdDate": "2026-06-25T00:00:00Z",
-    "comments": "Note: Petstore uses an api_key header; the Bearer wrappers still work against the permissive public instance."
+    "comments": "Note: Petstore uses an api_key header; the Bearer wrappers still work against the permissive public instance.",
+    "applicationId": "app-petstore"
+  },
+  {
+    "id": "23",
+    "methodName": "ValidateBadRequestResponseAsync",
+    "description": "Validates a negative response: passes on HTTP 400 (a bad-request rejection), writing a PASS/FAIL line. Returns true on pass.",
+    "parameters": "response:HttpResponseMessage",
+    "returnType": "Task<bool>",
+    "code": "def validate_bad_request_response_async(response):\n    code = response.status_code\n    passed = code == 400\n    print(f\"PASS: status {code}\" if passed else f\"FAIL: expected 400 but got {code}\")\n    return passed",
+    "category": "Response",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-06-30T00:00:00.000Z",
+    "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "24",
+    "methodName": "ValidateUnauthorizedResponseAsync",
+    "description": "Validates a negative response: passes on HTTP 401 (an unauthorized (missing/invalid auth) rejection), writing a PASS/FAIL line. Returns true on pass.",
+    "parameters": "response:HttpResponseMessage",
+    "returnType": "Task<bool>",
+    "code": "def validate_unauthorized_response_async(response):\n    code = response.status_code\n    passed = code == 401\n    print(f\"PASS: status {code}\" if passed else f\"FAIL: expected 401 but got {code}\")\n    return passed",
+    "category": "Response",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-06-30T00:00:00.000Z",
+    "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "25",
+    "methodName": "ValidateForbiddenResponseAsync",
+    "description": "Validates a negative response: passes on HTTP 403 (a forbidden (not allowed) rejection), writing a PASS/FAIL line. Returns true on pass.",
+    "parameters": "response:HttpResponseMessage",
+    "returnType": "Task<bool>",
+    "code": "def validate_forbidden_response_async(response):\n    code = response.status_code\n    passed = code == 403\n    print(f\"PASS: status {code}\" if passed else f\"FAIL: expected 403 but got {code}\")\n    return passed",
+    "category": "Response",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-06-30T00:00:00.000Z",
+    "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "26",
+    "methodName": "ValidateNotFoundResponseAsync",
+    "description": "Validates a negative response: passes on HTTP 404 (a not-found rejection), writing a PASS/FAIL line. Returns true on pass.",
+    "parameters": "response:HttpResponseMessage",
+    "returnType": "Task<bool>",
+    "code": "def validate_not_found_response_async(response):\n    code = response.status_code\n    passed = code == 404\n    print(f\"PASS: status {code}\" if passed else f\"FAIL: expected 404 but got {code}\")\n    return passed",
+    "category": "Response",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-06-30T00:00:00.000Z",
+    "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "27",
+    "methodName": "ValidateConflictResponseAsync",
+    "description": "Validates a negative response: passes on HTTP 409 (a conflict rejection), writing a PASS/FAIL line. Returns true on pass.",
+    "parameters": "response:HttpResponseMessage",
+    "returnType": "Task<bool>",
+    "code": "def validate_conflict_response_async(response):\n    code = response.status_code\n    passed = code == 409\n    print(f\"PASS: status {code}\" if passed else f\"FAIL: expected 409 but got {code}\")\n    return passed",
+    "category": "Response",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-06-30T00:00:00.000Z",
+    "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "28",
+    "methodName": "ValidateValidationErrorResponseAsync",
+    "description": "Validates a negative response: passes on HTTP 422 (an unprocessable-entity (validation error) rejection), writing a PASS/FAIL line. Returns true on pass.",
+    "parameters": "response:HttpResponseMessage",
+    "returnType": "Task<bool>",
+    "code": "def validate_validation_error_response_async(response):\n    code = response.status_code\n    passed = code == 422\n    print(f\"PASS: status {code}\" if passed else f\"FAIL: expected 422 but got {code}\")\n    return passed",
+    "category": "Response",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-06-30T00:00:00.000Z",
+    "comments": "Validates a negative API response status for test assertions"
   }
 ]
