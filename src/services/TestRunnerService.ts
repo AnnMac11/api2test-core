@@ -8,6 +8,15 @@ import * as path from 'path';
  * keeps it gated off (no local filesystem). See the edition-gating notes.
  */
 
+/** One API call captured during a test — from the generated Reporter's `##A2T_CALL##` output. */
+export interface ApiCall {
+  method?: string;
+  url?: string;
+  requestBody?: string;
+  status?: number;
+  responseBody?: string;
+}
+
 export interface RawTestResult {
   /** Bare method name (last segment of the fully-qualified test name). */
   method: string;
@@ -17,6 +26,19 @@ export interface RawTestResult {
   outcome: string;
   durationMs: number;
   message?: string;
+  /** API calls the test made, in order (from the Reporter markers in the test's console output). */
+  calls?: ApiCall[];
+}
+
+/** Pull the Reporter markers (`##A2T_CALL## {json}`) out of a test's captured console output. */
+export function parseApiCalls(stdout: string): ApiCall[] {
+  const calls: ApiCall[] = [];
+  for (const line of decode(stdout).split(/\r?\n/)) {
+    const i = line.indexOf('##A2T_CALL##');
+    if (i < 0) continue;
+    try { calls.push(JSON.parse(line.slice(i + 12).trim())); } catch { /* skip malformed */ }
+  }
+  return calls;
 }
 
 const decode = (x: string) =>
@@ -44,12 +66,15 @@ export function parseTrx(xml: string): RawTestResult[] {
     const fullName = get('testName');
     if (!fullName) continue;
     const msg = body.match(/<Message>([\s\S]*?)<\/Message>/);
+    const stdout = body.match(/<StdOut>([\s\S]*?)<\/StdOut>/);
+    const calls = stdout ? parseApiCalls(stdout[1]) : [];
     out.push({
       method: fullName.split('.').pop() || fullName,
       fullName,
       outcome: get('outcome'),
       durationMs: parseDuration(get('duration')),
       message: msg ? decode(msg[1]).trim() : undefined,
+      calls: calls.length ? calls : undefined,
     });
   }
   return out;
