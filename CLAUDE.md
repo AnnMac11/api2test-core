@@ -18,5 +18,8 @@ both editions — coordinate version bumps.
 - **When a task is agreed:** append it to `TASKS.md` immediately — id/short description, status, and the
   repo + branch if it has one. Do not rely on the live tracker to remember it.
 - **When a task is done:** move it to the Done section (don't delete — we re-verify), and note the
-  branch/PR. "Done" means implemented + a test shown failing→passing (see project memory).
+  branch/PR. "Done" means the **bug-first test protocol** was followed (see
+  `../api2test/docs/ONBOARDING.md`): identify the test that should have caught it → alter it to FAIL on
+  the broken code → fix → same test passes, both runs shown. An old test passing unchanged after a fix
+  is a red flag.
 - **End of session:** update `TASKS.md` so the next thread starts current.
