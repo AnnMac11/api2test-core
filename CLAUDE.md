@@ -9,6 +9,14 @@ both editions — coordinate version bumps.
 > **Start here:** for the full project orientation read [`../api2test/docs/ONBOARDING.md`](../api2test/docs/ONBOARDING.md)
 > (the Desktop repo holds the canonical onboarding). Then this repo's `docs/TASKS.md` for core tasks.
 
+## Testing
+
+This repo is **layer 1 (engine unit)** of the regression stack defined in
+[`../api2test/tests/README.md`](../api2test/tests/README.md) — read its "How deep — assertion rules"
+section before writing tests here. Engine tests live in `test/` and must **pin the concrete generated
+output** (e.g. the generated property is `public int Id`, not just "a class was produced") — #52
+(integer→`decimal`) survived a green suite precisely because no assertion did this.
+
 ## Task tracking
 
 - The single source of truth for open tasks is **`docs/TASKS.md`** (this repo, shared core),
