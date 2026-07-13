@@ -6,6 +6,9 @@ Project guidance loaded at the start of every session.
 the Desktop app (**`../api2test`**) and the VS Code extension (**`../Api2TestVS`**). Changes here affect
 both editions — coordinate version bumps.
 
+> **Start here:** for the full project orientation read [`../api2test/docs/ONBOARDING.md`](../api2test/docs/ONBOARDING.md)
+> (the Desktop repo holds the canonical onboarding). Then this repo's `docs/TASKS.md` for core tasks.
+
 ## Task tracking
 
 - The single source of truth for open tasks is **`docs/TASKS.md`** (this repo, shared core),
