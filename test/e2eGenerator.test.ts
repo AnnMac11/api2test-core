@@ -48,6 +48,80 @@ test('create→delete chain generates a complete, correctly-wired MSTest file', 
   assert.equal(/new StripeDeleteCustomersByCustomer\(\)/.test(code), false);
 });
 
+test('class-first row (no send-method) emits each class call and binds URL placeholders from args', () => {
+  // The In/Out redesign: a row is just a Class (the call) + follow-up extract methods — no leading send
+  // method. classStep must emit the call itself AND fill {placeholder} paths from the class's own args.
+  const petClasses = [
+    { className: 'PetStorePostPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json' },
+    { className: 'PetStoreDeletePetByPetId', endpoint: '/pet/{petId} (DELETE)', method: 'DELETE' },
+  ];
+  const petCtx: E2EGenContext = { methods, classes: petClasses };
+  const row: E2ETestCaseRow = {
+    id: 'r', name: 'Create then delete pet', items: [
+      { type: 'Class', ref: 'PetStorePostPet' },
+      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
+      { type: 'Class', ref: 'PetStoreDeletePetByPetId', args: { petId: { value: 'petId', isVariable: true } } },
+    ],
+  };
+  const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
+
+  // Row 1: the POST class emits its own request + call (no separate send method needed).
+  assert.match(code, /var response1 = await PostJsonAsync\(token, url1, request1\.ToJson\(\)\);/);
+  // Extract reads the POST response into the named variable.
+  assert.match(code, /var petId = await ExtractFieldFromResponse\(response1, "id"\);/);
+  // Row 2: the DELETE class binds {petId} from its args — the whole point of the fix.
+  assert.match(code, /var url3 = baseUrl \+ "\/pet\/" \+ petId;/);
+  assert.match(code, /var response3 = await DeleteAsync\(token, url3\);/);
+  // The placeholder must NOT survive unbound in any URL assignment (the step comment may still echo it).
+  assert.equal(/var url\d+ = [^;]*\{/.test(code), false, 'no URL line leaves a placeholder unbound');
+});
+
+test('Option 1: a captured value feeding a TYPED field is extracted in that native type (no conversion)', () => {
+  // POST pet → extract id → POST order with { PetId = <captured id> }. The order's PetId is a decimal, so the
+  // capture must be `ExtractField<decimal>` (native), NOT the string extractor + a string→number cast.
+  const petClasses = [
+    { className: 'PetStorePostPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json',
+      classCode: 'public class PetStorePostPet { public string Name { get; set; } }' },
+    { className: 'PetStorePostStoreOrder', endpoint: '/store/order (POST)', method: 'POST', contentType: 'application/json',
+      classCode: 'public class PetStorePostStoreOrder { public decimal PetId { get; set; } }' },
+  ];
+  const petCtx: E2EGenContext = { methods, classes: petClasses };
+  const row: E2ETestCaseRow = {
+    id: 'r', name: 'Order chain', items: [
+      { type: 'Class', ref: 'PetStorePostPet' },
+      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
+      { type: 'Class', ref: 'PetStorePostStoreOrder', overrides: { PetId: { value: 'petId', isVariable: true } } },
+    ],
+  };
+  const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
+
+  // Captured in the native decimal type (no string→number conversion at the use site).
+  assert.match(code, /var petId = await ExtractField<decimal>\(response1, "id"\);/);
+  assert.match(code, /new PetStorePostStoreOrder\(\)\s*\{ PetId = petId \}/);
+  assert.equal(/\.Parse\(petId\)/.test(code), false, 'no conversion at the assignment');
+});
+
+test('a captured value used only in a URL stays the string extractor (no typing needed)', () => {
+  // GetById uses the captured id in the URL (string concat) — no typed field consumes it, so it stays string.
+  const petCtx: E2EGenContext = {
+    methods,
+    classes: [
+      { className: 'PetStorePostPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json' },
+      { className: 'PetStoreGetPetByPetId', endpoint: '/pet/{petId} (GET)', method: 'GET' },
+    ],
+  };
+  const row: E2ETestCaseRow = {
+    id: 'r', name: 'Create then get', items: [
+      { type: 'Class', ref: 'PetStorePostPet' },
+      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
+      { type: 'Class', ref: 'PetStoreGetPetByPetId', args: { petId: { value: 'petId', isVariable: true } } },
+    ],
+  };
+  const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
+  assert.match(code, /var petId = await ExtractFieldFromResponse\(response1, "id"\);/);
+  assert.equal(/ExtractField</.test(code), false);
+});
+
 test('framework selection switches attributes + usings', () => {
   const row: E2ETestCaseRow = { id: 'r', name: 'Smoke', items: [{ type: 'Method', ref: 'ValidateDeleteResponseAsync' }] };
   const xunit = generateTestForRow(row, { ...page, framework: 'xUnit' }, ctx);

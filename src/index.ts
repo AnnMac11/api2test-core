@@ -26,6 +26,9 @@ export { ApiMethodLibraryService } from './services/ApiMethodLibraryService';
 export { DataDictionaryService, NOT_ASSIGNED, PARAMETER } from './services/DataDictionaryService';
 export { DataLibraryService } from './services/DataLibraryService';
 export { ClassGenerationService } from './services/ClassGenerationService';
+export { buildClassName } from './services/classNaming';
+export { hasUnassignedMandatory, isMandatoryField, isDataMethodUnassigned } from './services/fieldCompleteness';
+export type { CompletableField } from './services/fieldCompleteness';
 export { TestGenerationService } from './services/TestGenerationService';
 export type { TestGenerationRequest } from './services/TestGenerationService';
 export { AdminService } from './services/AdminService';
@@ -54,5 +57,6 @@ export {
   isConsumedClass, sourceEndpointKey, availableVarsBefore, validateSteps,
 } from './services/e2eCaseLogic';
 export type { MethodParamMap, PickerLike } from './services/e2eCaseLogic';
-export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus } from './services/TestRunnerService';
-export type { RawTestResult, BuildResult } from './services/TestRunnerService';
+export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
+export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
+export type { RawTestResult, BuildResult, ApiCall, VitestRun } from './services/TestRunnerService';

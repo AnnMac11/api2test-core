@@ -7,7 +7,7 @@ import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
  * them (the class supplies URL + body / {placeholder} values). Shared across editions.
  */
 
-interface GenState { lastResponse: string | null; tipShown: boolean }
+interface GenState { lastResponse: string | null; tipShown: boolean; varTypes?: Map<string, string> }
 
 /** PascalCase, identifier-safe test method name from a free-text case name. */
 export function methodName(name: string): string {
@@ -94,8 +94,16 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
   const isForm = /x-www-form-urlencoded/i.test(cls?.contentType || '');
   const respVar = producedVar(item, n);
 
+  // URL: bind every {placeholder} from the class's own `args` (In params), so a class-first row supports
+  // multi-placeholder paths (e.g. /store/{storeId}/order/{orderId}). Fall back to the single legacy
+  // `pathBindVariable`, then to the bare endpoint.
+  const hasPlaceholders = /\{[^}]+\}/.test(endpoint);
+  const url = hasPlaceholders && placeholdersIn(endpoint).some(name => item.args?.[name]?.value)
+    ? buildUrlWithPathArgs(endpoint, item)
+    : urlExpr(endpoint, n, item.pathBindVariable);
+
   lines.push(`        // Step ${n}: ${item.ref} (${httpMethod} ${endpoint})`);
-  lines.push(`        var url${n} = ${urlExpr(endpoint, n, item.pathBindVariable)};`);
+  lines.push(`        var url${n} = ${url};`);
 
   if (httpMethod === 'GET') {
     lines.push(`        var ${respVar} = await GetAsync<object>(token, url${n});`);
@@ -178,15 +186,21 @@ function methodStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenC
   const phExpr = classPlaceholderExpr(pairedClass, ctx);
   const args = params.map((p: string) =>
     (p.toLowerCase() === 'value' && hasUrlTemplate && phExpr) ? phExpr : resolveArg(p, item, state, ctx, pairedClass));
-  const call = `${item.ref}(${args.join(', ')})`;
   const awaited = isAsync(m?.returnType) ? 'await ' : '';
+  const resultVar = producedVar(item, n);
+  // Option 1: a field-extracting method whose captured variable feeds a TYPED (non-string) request field is
+  // emitted as the generic `ExtractField<T>` so the value is captured in its native type (e.g. a decimal id),
+  // dropping into that field with no conversion. Everything else keeps the plain string extractor.
+  const extractsField = params.some((p: string) => { const lp = p.toLowerCase(); return lp.includes('field') || lp.includes('path'); });
+  const wantType = extractsField ? state.varTypes?.get(resultVar) : undefined;
+  const emitRef = wantType ? `ExtractField<${wantType}>` : item.ref;
+  const call = `${emitRef}(${args.join(', ')})`;
 
   lines.push(`        // Step ${n}: ${item.ref}`);
   if (pairedClass) overrideComment(pairedClass, ctx, state).forEach(c => lines.push(c));
   if (/^validate/i.test(item.ref) && returnsBool(m?.returnType)) {
     lines.push(`        ${assertTrue(f, `${awaited}${call}`)}`);
   } else {
-    const resultVar = producedVar(item, n);
     lines.push(`        var ${resultVar} = ${awaited}${call};`);
     if (returnsResponse(m?.returnType)) state.lastResponse = resultVar;
   }
@@ -201,6 +215,23 @@ export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EG
     : `        var token = ${page.token}();`;
 
   const state: GenState = { lastResponse: null, tipShown: false };
+
+  // Look-ahead (Option 1): map each captured variable to the type of the body field it later feeds, so the
+  // extract can capture it in that native type. Only body-field overrides matter — a URL {placeholder} bound
+  // to a variable only ever goes into string concatenation, so it stays a string.
+  const varTypes = new Map<string, string>();
+  for (const it of (row.items || [])) {
+    if (it.type !== 'Class' || !it.overrides) continue;
+    const code = ctx.classes.find((c: any) => c.className === it.ref)?.classCode || '';
+    for (const [prop, v] of Object.entries(it.overrides)) {
+      const ov = v as { value: string; isVariable?: boolean };
+      if (!ov?.isVariable || !ov.value) continue;
+      const t = csTypeOf(code, prop);
+      if (t && t.toLowerCase() !== 'string') varTypes.set(ov.value, t);
+    }
+  }
+  state.varTypes = varTypes;
+
   const steps: string[] = [];
   const items = row.items || [];
 

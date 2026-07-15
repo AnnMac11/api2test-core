@@ -54,6 +54,21 @@ function parseDuration(d: string): number {
   return (parseInt(h) * 3600 + parseInt(mi) * 60 + parseInt(s)) * 1000 + (frac ? Math.round(parseFloat('0.' + frac) * 1000) : 0);
 }
 
+/**
+ * Pull the real **compile errors** out of a `dotnet build`/`test` log — the `error CSxxxx` lines — and
+ * present them compactly as `File.cs(line): CSxxxx — message`, deduped. Far more useful than a blind tail of
+ * the output (which often shows only warnings or an unrelated last line). Returns [] when there are none.
+ */
+export function extractBuildErrors(output: string): string[] {
+  const out: string[] = [];
+  for (const raw of (output || '').split(/\r?\n/)) {
+    const m = raw.match(/([^\\/]+\.[A-Za-z0-9]+)\((\d+),\d+\):\s*error\s+([A-Za-z]{1,3}\d+):\s*(.+?)(?:\s*\[[^\]]*\])?\s*$/);
+    if (m) out.push(`${m[1]}(${m[2]}): ${m[3]} — ${m[4].trim()}`);
+    else if (/:\s*error\s+[A-Za-z]{1,3}\d+:/.test(raw)) out.push(raw.trim());
+  }
+  return [...new Set(out)];
+}
+
 /** Parse a VSTest TRX file into per-test results (self-closing and child-bearing elements). */
 export function parseTrx(xml: string): RawTestResult[] {
   const out: RawTestResult[] = [];
@@ -95,7 +110,13 @@ export function runDotnetTest(projectPath: string, opts: { timeoutMs?: number; f
     execFile('dotnet', args, { timeout: opts.timeoutMs ?? 300_000, maxBuffer: 32 * 1024 * 1024, env: process.env }, (_err, stdout, stderr) => {
       const trxPath = path.join(resultsDir, 'results.trx');
       if (!fs.existsSync(trxPath)) {
-        return reject(new Error(`dotnet test produced no TRX. ${(stderr || stdout || '').toString().slice(-600)}`));
+        // No TRX means the build (or run) failed before any test executed. Surface the actual compile
+        // errors — not a blind tail of the log (which is often just a warning or an unrelated last line).
+        const errs = extractBuildErrors(`${stdout || ''}\n${stderr || ''}`);
+        const detail = errs.length
+          ? `Build failed (${errs.length} error${errs.length === 1 ? '' : 's'}):\n${errs.slice(0, 20).join('\n')}`
+          : (stderr || stdout || '').toString().slice(-800);
+        return reject(new Error(`dotnet test produced no TRX. ${detail}`));
       }
       try { resolve(parseTrx(fs.readFileSync(trxPath, 'utf8'))); }
       catch (e) { reject(e); }
@@ -126,6 +147,87 @@ export function runDotnetBuild(projectPath: string, opts: { timeoutMs?: number }
       ));
       if (err && errors.length === 0) errors.push((stderr || stdout || 'dotnet build failed').toString().trim().slice(-400));
       resolve({ ok: !err && errors.length === 0, errors, raw: out.slice(-2000) });
+    });
+  });
+}
+
+// ── TypeScript / Vitest runner (parallel to the dotnet path above) ──────────────────────────────────
+
+const npx = () => (process.platform === 'win32' ? 'npx.cmd' : 'npx');
+
+/**
+ * Parse Vitest's `--reporter=json` output into per-test results (parallel to {@link parseTrx}). Vitest's
+ * `status` strings ('passed'|'failed'|'skipped'|'todo') are already understood by {@link outcomeToStatus}.
+ *
+ * NOTE: the `##A2T_CALL##` markers are NOT in this JSON — Vitest drops test console output from the JSON
+ * reporter. They come from the run's **stdout** via {@link parseApiCalls} (the sandbox must set
+ * `disableConsoleIntercept: true`). Those stdout markers are flat (not per-test); per-test attribution
+ * needs a custom Vitest reporter — see TASKS.md TS-C2.
+ */
+export function parseVitestJson(json: string): RawTestResult[] {
+  const out: RawTestResult[] = [];
+  let d: any;
+  try { d = JSON.parse(json); } catch { return out; }
+  for (const file of d?.testResults ?? []) {
+    for (const a of file?.assertionResults ?? []) {
+      const fullName = a.fullName
+        || [...(a.ancestorTitles || []), a.title].filter(Boolean).join(' > ')
+        || a.title || '';
+      out.push({
+        method: (a.title || fullName || '').trim(),
+        fullName,
+        outcome: a.status || '',
+        durationMs: Math.round(a.duration || 0),
+        message: Array.isArray(a.failureMessages) && a.failureMessages.length
+          ? a.failureMessages.join('\n').trim() : undefined,
+      });
+    }
+  }
+  return out;
+}
+
+/** Parse `tsc --noEmit` output into a {@link BuildResult} (parallel to {@link runDotnetBuild}'s error grep). */
+export function parseTscErrors(output: string): BuildResult {
+  const errors = Array.from(new Set(
+    (output || '').split(/\r?\n/).map(l => l.trim()).filter(l => /:\s*error\s+TS\d+/i.test(l)),
+  ));
+  return { ok: errors.length === 0, errors, raw: (output || '').slice(-2000) };
+}
+
+/** Type-check a TS sandbox with `tsc --noEmit` and collect errors (parallel to {@link runDotnetBuild}). */
+export function runTsc(projectDir: string, opts: { timeoutMs?: number } = {}): Promise<BuildResult> {
+  return new Promise((resolve) => {
+    execFile(npx(), ['tsc', '--noEmit'], { cwd: projectDir, timeout: opts.timeoutMs ?? 240_000, maxBuffer: 32 * 1024 * 1024, env: process.env, shell: process.platform === 'win32' }, (err, stdout, stderr) => {
+      const res = parseTscErrors(`${stdout || ''}\n${stderr || ''}`);
+      if (err && res.ok) { res.ok = false; res.errors.push((stderr || stdout || 'tsc failed').toString().trim().slice(-400)); }
+      resolve(res);
+    });
+  });
+}
+
+export interface VitestRun {
+  /** Per-test results from the JSON reporter. */
+  results: RawTestResult[];
+  /** `##A2T_CALL##` markers pulled from the run's stdout (flat across the run — see per-test note above). */
+  calls: ApiCall[];
+}
+
+/** Run Vitest in a TS sandbox, parse the JSON reporter → results, and pull `##A2T_CALL##` markers from stdout. */
+export function runVitest(projectDir: string, opts: { timeoutMs?: number; filter?: string } = {}): Promise<VitestRun> {
+  return new Promise((resolve, reject) => {
+    const outFile = path.join(projectDir, '.api2test-results.json');
+    try { fs.rmSync(outFile, { force: true }); } catch { /* ignore */ }
+    const args = ['vitest', 'run', '--reporter=json', `--outputFile=${outFile}`];
+    if (opts.filter) args.push('-t', opts.filter);
+    execFile(npx(), args, { cwd: projectDir, timeout: opts.timeoutMs ?? 300_000, maxBuffer: 32 * 1024 * 1024, env: process.env, shell: process.platform === 'win32' }, (_err, stdout, stderr) => {
+      if (!fs.existsSync(outFile)) {
+        return reject(new Error(`vitest produced no JSON report. ${(stderr || stdout || '').toString().slice(-600)}`));
+      }
+      try {
+        const results = parseVitestJson(fs.readFileSync(outFile, 'utf8'));
+        const calls = parseApiCalls(`${stdout || ''}\n${stderr || ''}`);
+        resolve({ results, calls });
+      } catch (e) { reject(e); }
     });
   });
 }

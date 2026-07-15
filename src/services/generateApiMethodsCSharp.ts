@@ -97,7 +97,8 @@ using Newtonsoft.Json;
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
                 // Make the POST request and return the response
-                return Reporter.Record(await httpClient.PostAsync(url, content));
+                var response = await httpClient.PostAsync(url, content);
+                return Reporter.Record("POST", url, jsonContent, response);
             }
         }
 
@@ -117,7 +118,8 @@ using Newtonsoft.Json;
                         new AuthenticationHeaderValue("Bearer", authToken);
                 }
 
-                return Reporter.Record(await httpClient.GetAsync(url));
+                var response = await httpClient.GetAsync(url);
+                return Reporter.Record("GET", url, null, response);
             }
         }
 
@@ -141,7 +143,8 @@ using Newtonsoft.Json;
                 string jsonContent = JsonConvert.SerializeObject(jsonBody);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                return Reporter.Record(await httpClient.PutAsync(url, content));
+                var response = await httpClient.PutAsync(url, content);
+                return Reporter.Record("PUT", url, jsonContent, response);
             }
         }
 
@@ -161,7 +164,8 @@ using Newtonsoft.Json;
                         new AuthenticationHeaderValue("Bearer", authToken);
                 }
 
-                return Reporter.Record(await httpClient.DeleteAsync(url));
+                var response = await httpClient.DeleteAsync(url);
+                return Reporter.Record("DELETE", url, null, response);
             }
         }
 
@@ -199,31 +203,51 @@ using Newtonsoft.Json;
     });
   }
 
+  // Typed field extraction (Option 1 — capture in the field's native type). The generator emits this when a
+  // captured value feeds a typed request field, so e.g. an id stays a number and drops in with no conversion.
+  csharpCode += `        /// <summary>
+        /// Reads a response field (via ExtractFieldFromResponse) and returns it as <typeparamref name="T"/>,
+        /// so a captured value keeps its native type — a number stays a number, dropping straight into a
+        /// numeric request field with no conversion at the use site. Strings pass through unchanged; other
+        /// scalars convert from the raw text using the invariant culture.
+        /// </summary>
+        public static async Task<T> ExtractField<T>(HttpResponseMessage response, string fieldPath)
+        {
+            var raw = await ExtractFieldFromResponse(response, fieldPath);
+            var t = typeof(T);
+            if (t == typeof(string)) { return (T)(object)raw; }
+            if (raw == null) { return default(T); }
+            var target = System.Nullable.GetUnderlyingType(t) ?? t;
+            return (T)System.Convert.ChangeType(raw, target, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+`;
+
   // Close the ApiMethods class, emit the Reporter, then close the namespace.
   csharpCode += `    }
 
     /// <summary>
     /// Captures each API call (request + response) so the local/CI runner can extract it from the test's
-    /// console output. Every HTTP method reports by default via Reporter.Record(response).
+    /// console output. Prefer Record(method, url, requestBody, response): each send method passes the request
+    /// body it already holds, so it is captured reliably even after the request is disposed by the send.
     /// </summary>
     public static class Reporter
     {
         private const int MaxBody = 16384;
 
-        /// <summary>Record one call and return the response unchanged. Reads the request off
-        /// HttpResponseMessage.RequestMessage, so a single argument carries both sides. Never throws.</summary>
-        public static HttpResponseMessage Record(HttpResponseMessage response)
+        /// <summary>Record one call from pieces captured at the call site and return the response unchanged.
+        /// The request body is passed in (not scraped back off the response), so it is always captured. Never throws.</summary>
+        public static HttpResponseMessage Record(string method, string url, string requestBody, HttpResponseMessage response)
         {
             try
             {
-                var req = response?.RequestMessage;
                 var call = new
                 {
-                    method = req?.Method?.Method,
-                    url = req?.RequestUri?.ToString(),
-                    requestBody = Read(req?.Content),
+                    method,
+                    url,
+                    requestBody = Cap(requestBody),
                     status = response == null ? 0 : (int)response.StatusCode,
-                    responseBody = Read(response?.Content),
+                    responseBody = Cap(ReadContent(response?.Content)),
                 };
                 Console.WriteLine("##A2T_CALL## " + System.Text.Json.JsonSerializer.Serialize(call));
             }
@@ -231,14 +255,20 @@ using Newtonsoft.Json;
             return response;
         }
 
-        private static string Read(HttpContent content)
+        /// <summary>Back-compat overload — derives the request off HttpResponseMessage.RequestMessage, which
+        /// may already be disposed after the send (so requestBody can come back null). Prefer the four-arg overload.</summary>
+        public static HttpResponseMessage Record(HttpResponseMessage response)
+        {
+            var req = response?.RequestMessage;
+            return Record(req?.Method?.Method, req?.RequestUri?.ToString(), ReadContent(req?.Content), response);
+        }
+
+        private static string Cap(string s) => (s != null && s.Length > MaxBody) ? s.Substring(0, MaxBody) + "\\u2026(truncated)" : s;
+
+        private static string ReadContent(HttpContent content)
         {
             if (content == null) return null;
-            try
-            {
-                var s = content.ReadAsStringAsync().GetAwaiter().GetResult();
-                return s != null && s.Length > MaxBody ? s.Substring(0, MaxBody) + "\\u2026(truncated)" : s;
-            }
+            try { return content.ReadAsStringAsync().GetAwaiter().GetResult(); }
             catch { return null; }
         }
     }

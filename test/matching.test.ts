@@ -58,3 +58,29 @@ test('does not mutate the input array', () => {
     svc().autoMatchDataMethods(input, [method('Email', 'string')]);
     assert.equal(input[0].dataMethod, NOT_ASSIGNED);
 });
+
+test('return-type-first: a number field does NOT match a same-worded string method', () => {
+    // The bug this fix addresses: number `id` must not bind the string `TaxId()` — its CamelCase
+    // "Id" word name-matches, and the old coarse object/array/scalar bucket let it through.
+    const out = svc().autoMatchDataMethods(
+        [field('id', 'number')],
+        [method('TaxId', 'string'), method('FirstName', 'string')],
+    );
+    assert.equal(out[0].dataMethod, NOT_ASSIGNED);
+});
+
+test('return-type-first: a number field binds a number-returning method', () => {
+    const out = svc().autoMatchDataMethods(
+        [field('id', 'number')],
+        [method('TaxId', 'string'), method('RecordId', 'long')],
+    );
+    assert.equal(out[0].dataMethod, 'RecordId');
+});
+
+test('return-type-first: a boolean field does NOT match a string method by name', () => {
+    const out = svc().autoMatchDataMethods(
+        [field('active', 'boolean')],
+        [method('ActiveStatus', 'string')],
+    );
+    assert.equal(out[0].dataMethod, NOT_ASSIGNED);
+});

@@ -37,14 +37,20 @@ export class ClassGenerationService {
      * for live preview; {@link generateClass} wraps this and saves a record.
      */
     renderClassCode(request: ClassGenerationRequest): string | null {
-        // Only body fields become serialised class properties.
-        // Path/query/header params are substituted into the URL by the generated test.
+        const className = this.resolveClassName(request);
+        // Body fields become the serialised request-body class.
         const bodyFields = request.fieldConfigurations.filter(f => (f.location || 'body') === 'body');
         if (bodyFields.length === 0) {
-            return null;
+            // No request body: build a class from the URL/header params (already extracted from the {}
+            // placeholders) so a body-less endpoint (e.g. GET /user/{username}) still reaches the Class
+            // Library and can be added to a test. The generated test declares + interpolates these values
+            // into the URL, so this class carries plain properties (no JSON serialisation).
+            const urlParams = request.fieldConfigurations.filter(f => ['path', 'query', 'header'].includes(f.location || ''));
+            if (urlParams.length === 0) {
+                return null;
+            }
+            return this.generateUrlParamClass(className, request, urlParams, classesNs(request.application));
         }
-
-        const className = this.resolveClassName(request);
 
         // Form-encoded specs (e.g. Stripe) also get a ToFormBody(); JSON specs are unchanged.
         const isForm = (request.contentType || '').toLowerCase().includes('x-www-form-urlencoded');
@@ -280,6 +286,35 @@ ${properties}${this.serializerMethods(isForm)}
         if (!isForm) { return toJson; }
         const toForm = `\n\n        /// <summary>Serialises this instance to an application/x-www-form-urlencoded body\n        /// with bracket notation for nested objects (e.g. address[line1]). Used by form APIs like Stripe.</summary>\n        public string ToFormBody() => ApiMethods.FormUrlEncode(this);`;
         return toJson + toForm;
+    }
+
+    /**
+     * Synthesises a class for a BODY-LESS endpoint — one property per URL/header parameter (already
+     * extracted from the endpoint's `{}` placeholders) — so the endpoint reaches the API Class Library and
+     * can be added to a test. The generated test declares + interpolates these values into the request URL
+     * (see {@link TestGenerationService}), so this class carries **plain** properties — no
+     * `[JsonPropertyName]`, no `ToJson()`: URL/header params are never a serialised JSON body.
+     */
+    private generateUrlParamClass(
+        className: string,
+        request: ClassGenerationRequest,
+        params: FieldConfiguration[],
+        namespace: string,
+    ): string {
+        const lines = params.map(p => `        public ${this.getCSharpType(p.type)} ${this.formatPropertyName(p.name)} { get; set; }`);
+        return `using System;
+
+namespace ${namespace}
+{
+    /// <summary>
+    /// URL/header parameters for ${(request.method || '').toUpperCase()} ${request.endpoint}.
+    /// The generated test supplies these values and interpolates them into the request URL.
+    /// </summary>
+    public class ${className}
+    {
+${lines.join('\n')}
+    }
+}`;
     }
 
     /**

@@ -1103,5 +1103,41 @@
     "isCustom": false,
     "project": null,
     "comments": "Stripe amounts are integer cents, not decimals."
+  },
+  {
+    "id": "param-string",
+    "methodName": "ParameterString",
+    "returnType": "string",
+    "description": "Placeholder for a runtime-supplied string parameter (value set by the test, not generated).",
+    "code": "def parameter_string(self) -> str:\n    return \"parameter\"",
+    "parameters": "",
+    "createdDate": "2026-07-13T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": null
+  },
+  {
+    "id": "param-int",
+    "methodName": "ParameterInt",
+    "returnType": "int",
+    "description": "Placeholder for a runtime-supplied integer parameter (value set by the test, not generated).",
+    "code": "def parameter_int(self) -> int:\n    return 99999",
+    "parameters": "",
+    "createdDate": "2026-07-13T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": null
+  },
+  {
+    "id": "param-date",
+    "methodName": "ParameterDate",
+    "returnType": "DateTime",
+    "description": "Placeholder for a runtime-supplied date parameter (value set by the test, not generated).",
+    "code": "def parameter_date(self) -> datetime:\n    return datetime(1900, 1, 1)",
+    "parameters": "",
+    "createdDate": "2026-07-13T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": null
   }
 ]

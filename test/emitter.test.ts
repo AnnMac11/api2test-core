@@ -33,12 +33,27 @@ test('emits a request class with a data-method default', () => {
     assert.match(code!, /\[JsonPropertyName\("email"\)\]/);
 });
 
-test('returns null when there are no body fields', () => {
+test('emits a URL-param class for a body-less endpoint (params become plain properties)', () => {
+    // A body-less endpoint (only {} path/query/header params) still gets a class so it reaches the Class
+    // Library and can be added to a test. The generated test supplies + interpolates the values, so the
+    // class carries PLAIN properties — no [JsonPropertyName], no ToJson (URL params are never a JSON body).
     const req: ClassGenerationRequest = {
         endpoint: '/customers/{id}', method: 'GET', application: 'Stripe',
         fieldConfigurations: [
             { name: 'id', type: 'string', required: true, location: 'path' },
         ],
+    };
+    const code = emitter().emitRequestClass(req);
+    assert.ok(code, 'a class is produced for a body-less endpoint');
+    assert.match(code!, /public string Id \{ get; set; \}/, 'the URL param becomes a plain property');
+    assert.doesNotMatch(code!, /JsonPropertyName/, 'URL params are not a JSON body — no JsonPropertyName');
+    assert.doesNotMatch(code!, /ToJson/, 'URL params are not serialised — no ToJson');
+});
+
+test('returns null when the endpoint has no fields at all (no body, no params)', () => {
+    const req: ClassGenerationRequest = {
+        endpoint: '/health', method: 'GET', application: 'Stripe',
+        fieldConfigurations: [],
     };
     assert.equal(emitter().emitRequestClass(req), null);
 });

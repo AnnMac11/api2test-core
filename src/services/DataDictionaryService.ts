@@ -259,6 +259,12 @@ export class DataDictionaryService {
      * - **Scalar** properties become a single typed row.
      */
     private extractFieldsFromSchema(node: any, prefix: string, fields: DataDictionaryField[]): void {
+        // Array-root body (e.g. POST /user/createWithList sends `[ {…} ]`): the fields are the element's
+        // properties — extract them so the user can fill one element (the request wraps it in an array).
+        if (node && node.type === 'array' && node.items) {
+            this.extractFieldsFromSchema(node.items, prefix, fields);
+            return;
+        }
         if (!node || node.type !== 'object' || !node.properties) { return; }
         // A property is mandatory when it appears in its immediate parent object's `required` list.
         const requiredSet = new Set<string>(Array.isArray(node.required) ? node.required : []);
@@ -375,11 +381,12 @@ export class DataDictionaryService {
         field: DataDictionaryField,
         dataMethods: DataMethodDto[]
     ): DataMethodDto | undefined {
-        // TYPE FIRST: only consider methods whose return *kind* matches the field's kind
-        // (object field â†’ object-returning methods, array â†’ array methods, scalar â†’ scalar).
-        // This stops an object field like `address` from matching the scalar `Address()` by name.
-        const fieldKind = this.kindOf(field.fieldType);
-        const candidates = dataMethods.filter(dm => this.kindOf(dm.returnType) === fieldKind);
+        // TYPE FIRST: only consider methods whose return type matches the field's type class
+        // (object→object, array→array, and scalars split by number/boolean/date/string). This stops an
+        // object `address` field matching the scalar `Address()`, AND a number `id` field matching the
+        // string `TaxId()` — a coarse object/array/scalar bucket used to allow that second mismatch.
+        const fieldClass = this.typeClass(field.fieldType);
+        const candidates = dataMethods.filter(dm => this.typeClass(dm.returnType) === fieldClass);
         if (candidates.length === 0) { return undefined; }
 
         // Match on the LEAF segment of a dot-path (category.name â†’ "name"), singularising
@@ -422,17 +429,24 @@ export class DataDictionaryService {
         //    Address generator), so blindly assigning the only object method to every
         //    unmatched object field (shipping, cash_balance, tax, …) is wrong — worse than
         //    leaving it unassigned for the user to pick. Scalars/arrays keep the fallback.
-        if (candidates.length === 1 && fieldKind !== 'object') { return candidates[0]; }
+        if (candidates.length === 1 && fieldClass !== 'object') { return candidates[0]; }
 
         return undefined;
     }
 
-    /** Classifies a field type or a method return type as object / array / scalar. */
-    private kindOf(type: string): 'object' | 'array' | 'scalar' {
-        const t = (type || '').toLowerCase();
+    /**
+     * Classifies a field type or a method return type into a matching class. Scalars are split into
+     * number / boolean / date / string (not lumped as one "scalar") so a numeric field never binds a
+     * string generator — e.g. a `number` `id` field must not match the string `TaxId()` method.
+     */
+    private typeClass(type: string): 'object' | 'array' | 'number' | 'boolean' | 'date' | 'string' {
+        const t = (type || '').toLowerCase().trim().replace(/\?/g, '');
         if (t.includes('list<') || t.endsWith('[]') || t === 'array') { return 'array'; }
         if (t.includes('dictionary') || t === 'object') { return 'object'; }
-        return 'scalar';
+        if (/^(number|integer|int|long|short|byte|sbyte|uint|ulong|ushort|decimal|double|float|single)$/.test(t)) { return 'number'; }
+        if (t === 'bool' || t === 'boolean') { return 'boolean'; }
+        if (t === 'date' || t === 'dateonly' || t === 'timespan' || t.includes('datetime')) { return 'date'; }
+        return 'string';
     }
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -480,7 +494,9 @@ export class DataDictionaryService {
     private mapTypeToFieldType(type: string): string {
         const map: Record<string, string> = {
             text: 'string', string: 'string', number: 'number',
-            integer: 'number', boolean: 'boolean',
+            // #52: keep `integer` distinct from `number` so it generates C# `int`, not `decimal`. Matching
+            // still treats both as numeric (typeClass groups them), so data-method matching is unaffected.
+            integer: 'integer', boolean: 'boolean',
             date: 'string', email: 'string', url: 'string'
         };
         return map[type.toLowerCase()] ?? 'string';
