@@ -64,8 +64,8 @@ concrete generated TS, not "a file was produced").
   placeholder, `toJson()`. Wired into `TypeScriptEmitter.emitRequestClass`. Tests in
   `test/requestClassTypeScript.test.ts` (strict compile-check w/ a stub DataGenerator; guard shown to fail
   on an initialised optional field). Build + 90 tests green.
-  - **Follow-up (deferred):** form-encoded `toFormBody()` not emitted — needs a TS `FormUrlEncode` helper
-    on the TS ApiMethods (parallel to C#'s `ApiMethods.FormUrlEncode`). Only affects form APIs (e.g. Stripe).
+  - **Form support now DONE** (review fix 2026-07-16): `toFormBody()` is emitted for form-encoded classes,
+    delegating to the seed `ApiMethods.formUrlEncode`. (Superseded the earlier "deferred" note.)
   - **Note:** the emitter path is flat only; the C# nested-schema generator (`generateNestedClasses`) isn't
     reachable from `emitRequestClass`, so TS has no nested-class port yet. Revisit if the emitter path grows
     nested support.
@@ -118,6 +118,24 @@ concrete generated TS, not "a file was produced").
   - **Follow-up (deferred): data-library long tail.** Only a core ~13-method Data Library set is ported;
     C# has ~95. Port the rest (faker.js bodies) as needed — each is independent. Tracked here.
   - **Enables TS-C7:** the E2E send-helper vocabulary now exists + is name-checked.
+
+### TS emit layer — review fixes (2026-07-16, from the VS Code review)
+
+- [x] **#1 form endpoints compiled to broken code (real bug).** The test/E2E emitters emit
+  `new Body().toFormBody()`, but TS-C4 didn't emit `toFormBody()` → tsc failure. Root cause also included
+  TS-C4 importing `./dataGenerator` (flat) instead of the layout-correct `../../Libraries/dataGenerator`.
+  Fixed: TS-C4 now emits `toFormBody()` (→ `ApiMethods.formUrlEncode`) and computes RELATIVE sibling
+  imports. **The tests were masking it** — TS-C4/C6 compiled in a flat dir with stub classes that had a
+  hand-written `toFormBody`. Reworked TS-C4 to compile in the real `Classes/<App>` + `Libraries` layout,
+  and TS-C6 to compile against the REAL TS-C4 class (not a stub). Both form guards shown failing on the
+  pre-fix emitter.
+- [x] **#2 stale `TypeScriptEmitter` docstring / unused `_storage`.** Docstring said "stub… not built
+  yet"; all five are implemented. Fixed docstring + clarified the unused-storage comment.
+- [x] **#3 query values not URL-encoded** (was shared with C#). TS test emitter now wraps query values in
+  `encodeURIComponent(String(...))`. Test added.
+- [x] **#4 same-named path+query param → two `const` (won't compile).** TS test emitter now declares each
+  distinct param var once. Test added.
+- Build + 111 tests green after the fixes.
 
 ## Done (kept for re-verification — do not delete)
 

@@ -1,8 +1,9 @@
 /**
  * TS-C4 — the TypeScript request-class emitter. Mirrors the C# emitter.test.ts cases: property name is
- * the JSON key, data-method defaults, PARAMETER placeholder, optional fields omitted, URL-param classes.
- * The emitted source is compiled under strict TS (with a stub DataGenerator, since TS-C5 isn't built yet)
- * so a generated class is proven to type-check.
+ * the JSON key, data-method defaults, PARAMETER placeholder, optional fields omitted, URL-param classes,
+ * and form-encoded `toFormBody()`. The emitted class is compiled under strict TS INSIDE THE REAL DEPLOY
+ * LAYOUT (class in `Classes/<App>/`, stub siblings in `Libraries/`) so its `../../Libraries/…` imports are
+ * validated — a flat sandbox would mask a wrong relative path or a missing sibling method.
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
@@ -14,15 +15,21 @@ import { generateRequestClassTypeScript } from '../src/services/generateRequestC
 import { ClassGenerationRequest } from '../src/models/ClassGenerationDto';
 import { PARAMETER } from '../src/services/DataDictionaryService';
 
-/** Compile the emitted class under strict TS in an isolated sandbox with a generic DataGenerator stub. */
-function assertCompiles(code: string): void {
+/** Compile the emitted class in the real Classes/<App> + Libraries layout (stub DataGenerator + ApiMethods). */
+function assertCompiles(code: string, application: string): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-tsc-'));
-  fs.writeFileSync(path.join(dir, 'requestClass.ts'), code);
-  // Universal stub: an index signature makes `new DataGenerator().anyMethod()` type-check as `any`.
-  fs.writeFileSync(path.join(dir, 'dataGenerator.ts'), 'export class DataGenerator { [k: string]: (...args: any[]) => any; }\n');
-  fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
-    compilerOptions: { strict: true, target: 'ES2022', lib: ['ES2022', 'DOM'], types: [], moduleDetection: 'force', noEmit: true },
-    include: ['requestClass.ts', 'dataGenerator.ts'],
+  const seg = application.replace(/[^A-Za-z0-9]/g, '');
+  const mk = (rel: string, contents: string) => {
+    const full = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, contents);
+  };
+  mk(`Classes/${seg}/requestClass.ts`, code);
+  mk('Libraries/dataGenerator.ts', 'export class DataGenerator { [k: string]: (...args: any[]) => any; }\n');
+  mk('Libraries/apiMethods.ts', 'export const ApiMethods: any = {};\n');
+  mk('tsconfig.json', JSON.stringify({
+    compilerOptions: { strict: true, target: 'ES2022', lib: ['ES2022', 'DOM'], module: 'ESNext', moduleResolution: 'bundler', types: [], noEmit: true },
+    include: ['**/*.ts'],
   }));
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   try {
@@ -44,8 +51,24 @@ test('emits a body class: JSON-key property, data-method default, toJson()', () 
   assert.match(code, /export class StripeCustomers/);
   assert.match(code, /email: string = new DataGenerator\(\)\.email\(\);/, 'property key is the JSON field name + data default');
   assert.match(code, /toJson\(\): string \{ return JSON\.stringify\(this\); \}/);
+  assert.match(code, /import \{ DataGenerator \} from '\.\.\/\.\.\/Libraries\/dataGenerator';/, 'DataGenerator imported by RELATIVE path, not a flat ./');
   assert.doesNotMatch(code, /JsonPropertyName/, 'TS uses the property name as the JSON key — no attribute');
-  assertCompiles(code);
+  assertCompiles(code, 'Stripe');
+});
+
+test('form-encoded content-type emits toFormBody() delegating to ApiMethods.formUrlEncode', () => {
+  const req: ClassGenerationRequest = {
+    endpoint: '/customers', method: 'POST', application: 'Stripe',
+    contentType: 'application/x-www-form-urlencoded',
+    fieldConfigurations: [
+      { name: 'name', type: 'string', required: true, dataMethod: 'companyName', location: 'body' },
+    ],
+  };
+  const code = generateRequestClassTypeScript(req)!;
+  assert.match(code, /toFormBody\(\): string \{ return ApiMethods\.formUrlEncode\(/, 'form class emits toFormBody');
+  assert.match(code, /import \{ ApiMethods \} from '\.\.\/\.\.\/Libraries\/apiMethods';/, 'ApiMethods imported for formUrlEncode');
+  assert.match(code, /toJson\(\): string/, 'still emits toJson too');
+  assertCompiles(code, 'Stripe');
 });
 
 test('a PascalCase registry data method is emitted as a camelCase TS call', () => {
@@ -58,7 +81,7 @@ test('a PascalCase registry data method is emitted as a camelCase TS call', () =
   const code = generateRequestClassTypeScript(req)!;
   assert.match(code, /firstName: string = new DataGenerator\(\)\.firstName\(\);/, 'FirstName → firstName');
   assert.doesNotMatch(code, /\.FirstName\(\)/, 'no PascalCase call in generated TS');
-  assertCompiles(code);
+  assertCompiles(code, 'Stripe');
 });
 
 test('optional unassigned field is left undefined (omitted by JSON.stringify), not initialised', () => {
@@ -71,7 +94,7 @@ test('optional unassigned field is left undefined (omitted by JSON.stringify), n
   const code = generateRequestClassTypeScript(req)!;
   assert.match(code, /nickname\?: string;/, 'optional property, no initializer');
   assert.doesNotMatch(code, /nickname\?: string = /, 'must NOT be initialised (would emit an explicit null/empty key)');
-  assertCompiles(code);
+  assertCompiles(code, 'Stripe');
 });
 
 test('PARAMETER field emits a settable default, not a DataGenerator call', () => {
@@ -86,7 +109,7 @@ test('PARAMETER field emits a settable default, not a DataGenerator call', () =>
   assert.doesNotMatch(code, /DataGenerator\(\)\.Parameter/i, 'no Parameter generator method');
   assert.match(code, /orderId: number = 0; \/\/ parameter/, 'PARAMETER → plain default');
   assert.match(code, /quantity: number = new DataGenerator\(\)\.randomId\(\);/, 'real method still used');
-  assertCompiles(code);
+  assertCompiles(code, 'Pet Store');
 });
 
 test('body-less endpoint → URL-param class with plain props, no toJson()', () => {
@@ -99,7 +122,7 @@ test('body-less endpoint → URL-param class with plain props, no toJson()', () 
   const code = generateRequestClassTypeScript(req)!;
   assert.match(code, /id!: string;/, 'URL param is a definite-assignment property');
   assert.doesNotMatch(code, /toJson/, 'URL params are not a JSON body — no toJson');
-  assertCompiles(code);
+  assertCompiles(code, 'Stripe');
 });
 
 test('returns null when the endpoint has no fields at all', () => {

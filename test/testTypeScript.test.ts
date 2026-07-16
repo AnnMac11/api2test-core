@@ -12,10 +12,15 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateTestTypeScript } from '../src/services/generateTestTypeScript';
+import { generateRequestClassTypeScript } from '../src/services/generateRequestClassTypeScript';
 import { TestGenerationRequest } from '../src/services/TestGenerationService';
 
-/** Lay the generated test into Tests/<App>/ alongside stub Libraries/ + Classes/<App>/, then strict-compile. */
-function assertCompiles(code: string, app: string, bodyClass?: string): void {
+/**
+ * Lay the generated test into Tests/<App>/ alongside stub Libraries/ and the REAL TS-C4 request class in
+ * Classes/<App>/, then strict-compile. Using the real class (not a stub) means the test's `.toJson()` /
+ * `.toFormBody()` calls are checked against what the class emitter actually produces — no stub masking.
+ */
+function assertCompiles(code: string, app: string, bodyClass?: string, opts: { form?: boolean } = {}): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-tsc-'));
   const seg = app.replace(/[^A-Za-z0-9]/g, '');
   const mk = (rel: string, contents: string) => {
@@ -24,10 +29,16 @@ function assertCompiles(code: string, app: string, bodyClass?: string): void {
     fs.writeFileSync(full, contents);
   };
   mk(`Tests/${seg}/generated.test.ts`, code);
-  // Universal stubs for the sibling artifacts (real ones come from TS-C3/C4/C5).
   mk('Libraries/apiMethods.ts', 'export const ApiMethods: any = {};\n');
   mk('Libraries/dataGenerator.ts', 'export class DataGenerator { [k: string]: (...a: any[]) => any; }\n');
-  if (bodyClass) { mk(`Classes/${seg}/${bodyClass}.ts`, `export class ${bodyClass} { toJson(): string { return ''; } toFormBody(): string { return ''; } }\n`); }
+  if (bodyClass) {
+    const cls = generateRequestClassTypeScript({
+      className: bodyClass, endpoint: '/x', method: 'POST', application: app,
+      contentType: opts.form ? 'application/x-www-form-urlencoded' : undefined,
+      fieldConfigurations: [{ name: 'name', type: 'string', required: true, dataMethod: 'companyName', location: 'body' }],
+    })!;
+    mk(`Classes/${seg}/${bodyClass}.ts`, cls);
+  }
   mk('vitest.d.ts', "declare module 'vitest' { export const describe: any; export const it: any; export const expect: any; }\n");
   mk('tsconfig.json', JSON.stringify({
     compilerOptions: { strict: true, target: 'ES2022', lib: ['ES2022', 'DOM'], module: 'ESNext', moduleResolution: 'bundler', types: [], noEmit: true },
@@ -77,10 +88,36 @@ test('GET (no body) → 2-arg wrapper call, no body import', () => {
   assertCompiles(code, 'PetStore');
 });
 
-test('form content-type serialises with toFormBody()', () => {
+test('form content-type serialises with toFormBody() (compiles against the REAL form class)', () => {
   const code = generateTestTypeScript({ ...POST_REQ, contentType: 'application/x-www-form-urlencoded' });
   assert.match(code, /new PetStorePets\(\)\.toFormBody\(\);/);
-  assertCompiles(code, 'PetStore', 'PetStorePets');
+  // form: true → the real TS-C4 class emitted here actually has toFormBody; a JSON class would NOT,
+  // so this compile would fail — which is exactly the bug the earlier stub masked.
+  assertCompiles(code, 'PetStore', 'PetStorePets', { form: true });
+});
+
+test('query values are URL-encoded', () => {
+  const req: TestGenerationRequest = {
+    className: 'PetStoreFind', endpoint: '/pets', method: 'GET', application: 'PetStore',
+    wrapperClass: 'ApiMethods', wrapperMethod: 'getWithToken', testFramework: 'Vitest',
+    basePathMethod: 'petStoreBaseUrl', queryParams: [{ name: 'status', dataMethod: 'randomStr' }],
+  };
+  const code = generateTestTypeScript(req);
+  assert.match(code, /\?status=\$\{encodeURIComponent\(String\(status\)\)\}/, 'query value is URL-encoded');
+  assertCompiles(code, 'PetStore');
+});
+
+test('a path param and a same-named query param share ONE const (no duplicate declaration)', () => {
+  const req: TestGenerationRequest = {
+    className: 'PetStorePet', endpoint: '/pets/{id}', method: 'GET', application: 'PetStore',
+    wrapperClass: 'ApiMethods', wrapperMethod: 'getWithToken', testFramework: 'Vitest',
+    basePathMethod: 'petStoreBaseUrl',
+    pathParams: [{ name: 'id', dataMethod: 'randomId' }],
+    queryParams: [{ name: 'id', dataMethod: 'randomId' }],
+  };
+  const code = generateTestTypeScript(req);
+  assert.equal((code.match(/const id = /g) || []).length, 1, 'exactly one `const id` (two would not compile)');
+  assertCompiles(code, 'PetStore');
 });
 
 test('a selected async response handler defines pass/fail', () => {

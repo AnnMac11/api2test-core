@@ -13,22 +13,16 @@ import { DataMethodCode } from '../services/generateDataLibrary';
 import { E2EPage, E2ETestCaseRow, E2EGenContext } from '../models/E2EDto';
 
 /**
- * TypeScript {@link CodeEmitter} — produces Vitest-targeted TS sources.
- *
- * Stub: the seam is in place (TS-C1) but the emitters are not built yet. Each method is filled by a
- * follow-up task — see `../../docs/TASKS.md`:
- *   - emitApiMethods    → TS-C3
- *   - emitRequestClass  → TS-C4
- *   - emitDataLibrary   → TS-C5
- *   - emitTest          → TS-C6
- *   - emitE2ETest       → TS-C7
+ * TypeScript {@link CodeEmitter} — produces Vitest-targeted TS sources. All five emit kinds are
+ * implemented by pure render functions (TS-C3…C7); each `emit*` delegates to one.
  */
 export class TypeScriptEmitter implements CodeEmitter {
     readonly language: TargetLanguage = 'typescript';
     readonly fileExtension = 'ts';
 
-    // Storage is accepted for parity with CSharpEmitter (the class/test emitters will need it).
-    constructor(_storage: StorageProvider) { /* wired up as the emitters land */ }
+    // Storage is accepted for parity with CSharpEmitter's constructor signature, but TS rendering is pure
+    // (no persistence), so it is unused — the selector passes one uniformly for both emitters.
+    constructor(_storage: StorageProvider) { /* intentionally unused — see note above */ }
 
     emitRequestClass(request: ClassGenerationRequest): string | null {
         return generateRequestClassTypeScript(request);

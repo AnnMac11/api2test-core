@@ -77,8 +77,13 @@ export function generateTestTypeScript(request: TestGenerationRequest): string {
   arrange.push('    // Arrange');
   arrange.push('    const token = await getToken();');
 
+  // Declare one const per DISTINCT parameter variable. A path {id} and a query `id` sanitise to the same
+  // name and refer to the same value, so they share a single declaration (two `const id` would not compile).
+  const declared = new Set<string>();
   for (const p of [...(request.pathParams || []), ...(request.queryParams || [])]) {
     const v = paramVar(p.name);
+    if (declared.has(v)) { continue; }
+    declared.add(v);
     if (p.dataMethod && p.dataMethod !== NOT_ASSIGNED && p.dataMethod !== PARAMETER) {
       const args = (p.dataMethodArgs || '').trim();
       arrange.push(`    const ${v} = new DataGenerator().${tsSymbol(p.dataMethod)}(${args});`);
@@ -89,8 +94,9 @@ export function generateTestTypeScript(request: TestGenerationRequest): string {
   }
 
   const endpointInterp = (request.endpoint || '').replace(/\{([^}]+)\}/g, (_m, p) => `\${${paramVar(p)}}`);
+  // Query VALUES are URL-encoded so a value with a space, & or = doesn't corrupt the query string.
   const query = (request.queryParams || [])
-    .map((p, i) => `${i === 0 ? '?' : '&'}${p.name}=\${${paramVar(p.name)}}`)
+    .map((p, i) => `${i === 0 ? '?' : '&'}${p.name}=\${encodeURIComponent(String(${paramVar(p.name)}))}`)
     .join('');
   arrange.push(`    const url = \`\${baseUrl()}${endpointInterp}${query}\`;`);
 
