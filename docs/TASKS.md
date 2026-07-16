@@ -137,6 +137,46 @@ concrete generated TS, not "a file was produced").
   distinct param var once. Test added.
 - Build + 111 tests green after the fixes.
 
+### Shared client orchestration → core (ORCH series) — added 2026-07-16
+
+Three orchestrations sit ABOVE core's primitives and are hand-assembled in each client — duplicated (VS
+Code `DataDictionaryImportDialog`, Desktop `server/coreExtract.ts` + `useBatchClassGeneration`). The
+primitives already live in core (`DataDictionaryService.extractFieldsFromEndpoint` / `autoMatchDataMethods`
+/ `addField`, `ApiClassLibraryService.addClass`, `fieldCompleteness`); only the SEQUENCE + the status RULE
+are outside. Lift them so VS Code's new import page is thin (checkboxes → call core → render tally) and
+Desktop later drops its copies onto the same methods. **Persistence stays per-client via `StorageProvider`**
+— core takes the services/storage it already does; HTTP + the generated-class store stay in the clients.
+**Reconcile drift, don't blind-copy** — the VS Code and Desktop copies may already differ (dedup,
+skipped-count, the addClass try/catch policy); pick the correct behavior and pin it with tests. Desktop is
+the more complete impl (it has ORCH-2/3), so it's largely the reference. Each lands bug-first.
+
+- [x] **ORCH-1 — `DictionaryImportService.importApi(endpoint) → { addedFields, skipped }`** (done
+  2026-07-16): lifts the Add-API-to-Dictionary sequence into core — extract-all vs dedup → `getDataMethods`
+  → `autoMatchDataMethods` → `addField` per field → `addClass` (best-effort; class failure swallowed) →
+  mark `importedToDataDictionary`. Takes a `StorageProvider` (builds the sub-services), so File/SQL/Mongo
+  all work; normalises `requestBodySchema` to a string so both client shapes work. Exported from index.
+  Tests in `test/dictionaryImport.test.ts` drive the real sequence over an in-memory store (fields
+  persisted + tally, re-import dedups everything, class-failure-doesn't-block shown failing without the
+  try/catch). Build + 114 green. **Reconciliation note:** VS Code did the full sequence; Desktop's
+  `coreExtract` only did extract+match (persist happened in a route) — core now owns the whole sequence.
+- [x] **ORCH-1b — `importApis(endpoints[]) → BatchImportResult`** (done 2026-07-16): batch import for the
+  import table (pick 5 of Stripe's 200+). Loops `importApi` independently — one endpoint throwing is recorded
+  on its row, not fatal to the batch. Returns per-endpoint tally + totals (`imported`/`failed`). Tested.
+- [x] **ORCH-2 — batch class-generation driver** (done 2026-07-16): `generateClassLibrary(entries, emitter)`
+  (pure) + `DictionaryImportService.generateClasses(emitter, endpointIds?)` (loads from the Class Library).
+  REUSES existing pieces — the green/amber decision is `fieldCompleteness.hasUnassignedMandatory`, the render
+  is the language `CodeEmitter` (`emitRequestClass`). Per class → `generated` (code) / `pending` (amber, not
+  rendered) / `error` (red, captured, batch continues) / `empty` (no body). **Code returned; persistence
+  stays with the client.** Tests in `test/batchClassGeneration.test.ts` (fake emitter; pending-rule guard
+  shown failing when disabled). Build + 119 green.
+- [x] **ORCH-3 — status rule: NOT NEEDED (already in core).** The green/amber decision is
+  `fieldCompleteness.hasUnassignedMandatory` (its doc literally says it "drives the amber 'pending' vs green
+  'generated' state"); red = a render error (captured by ORCH-2). No new function — ORCH-2 consumes the
+  existing one. Dropped.
+
+_Consumers (tracked elsewhere): VS Code import page + `SimpleTable` multi-select — `../Api2TestVS/docs/TASKS.md`;
+Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
+
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
