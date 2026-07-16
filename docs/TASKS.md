@@ -26,6 +26,99 @@ here affect both editions — note the coordinated version bump on any task that
   the CONCRETE generated output (`public int Id`, not "a class was produced") — see
   `../api2test/tests/README.md` "How deep".
 
+### TypeScript emitters (TS-C series) — added 2026-07-16
+
+Goal: give the engine a TypeScript emit path parallel to the C# one, so the VS Code extension (and
+Desktop) can surface TS/Vitest tests. The **runner side already exists** — `TestRunnerService.ts`
+has `runVitest` / `runTsc` / `parseVitestJson` / `parseTscErrors`. Everything below is the missing
+**emit** side (all current emitters are C#-only, none takes a `language` param). Each ships to both
+editions — coordinate the version bump. Follow the bug-first test protocol per emitter (pin the
+concrete generated TS, not "a file was produced").
+
+- [x] **TS-C1 — language plumbing** (done 2026-07-16): added `'typescript'` to `TargetLanguage`;
+  extended the `CodeEmitter` interface to all 5 kinds (request class, test, ApiMethods, Data Library,
+  E2E); `CSharpEmitter` implements them by delegating to existing services; new `TypeScriptEmitter`
+  stub throws per-method with its follow-up task id; added `emitterFor(language, storage)` selector.
+  `defaultLibraries` map made `Partial` (TS seed lib is TS-C8). Tests in `test/emitter.test.ts`;
+  build + 82 tests green. NOT DONE: the TS module/import strategy replacing `generatedNamespaces.ts`
+  (no TS namespaces) — deferred to whichever emitter first needs file layout (TS-C3/C6).
+- [x] **TS-C2 — per-test Vitest reporter** (done 2026-07-16): `emitVitestReporter()` emits a pure-Node
+  (CJS, fs-only) Vitest reporter that reads each finished test's captured `logs`, pulls that test's
+  `##A2T_CALL##` markers, and writes a `{ fullName: ApiCall[] }` map to `A2T_CALLS_FILE`. `runVitest` now
+  drops the reporter into the sandbox, runs with `--reporter <it>`, then `parseVitestCallsMap` +
+  `mergeVitestCalls` attach calls per test (and `calls` becomes the flattened union — resolving the old
+  console-intercept tension; stdout is the fallback). Tests in `test/vitestReporter.test.ts` drive the
+  emitted reporter directly (require it, feed a fake finished-task tree) — guard shown to fail on
+  flat-across-run attribution. Build + 108 tests green.
+- [x] **TS-C3 — API Methods TS emitter** (done 2026-07-16): `generateApiMethodsTypeScript.ts` emits
+  `apiMethods.ts` — an `ApiMethods` class of static fetch `*WithToken` wrappers + `getResponseContent<T>`
+  + `extractField<T>`, and a `Reporter` printing the same `##A2T_CALL##` markers as C#. Class/static shape
+  kept identical to C# so `wrapperClass.wrapperMethod` resolves the same in TS-C6/C7. Wired into
+  `TypeScriptEmitter.emitApiMethods`. Tests in `test/apiMethodsTypeScript.test.ts`: marker round-trips
+  through the runner's `parseApiCalls`, and the emitted source is compiled with `tsc --strict` (proven to
+  fail on broken output). Build + 85 tests green.
+- [x] **TS-C4 — request-body class TS emitter** (done 2026-07-16): `generateRequestClassTypeScript.ts`
+  mirrors the C# emitter path (flat body class + URL-param class). TS drops two C# devices — the property
+  name *is* the JSON key (quoted when not an identifier), and `JSON.stringify` omits `undefined` so an
+  optional unassigned field is just `name?: T`. Data-method defaults `= new DataGenerator().m()`, PARAMETER
+  placeholder, `toJson()`. Wired into `TypeScriptEmitter.emitRequestClass`. Tests in
+  `test/requestClassTypeScript.test.ts` (strict compile-check w/ a stub DataGenerator; guard shown to fail
+  on an initialised optional field). Build + 90 tests green.
+  - **Follow-up (deferred):** form-encoded `toFormBody()` not emitted — needs a TS `FormUrlEncode` helper
+    on the TS ApiMethods (parallel to C#'s `ApiMethods.FormUrlEncode`). Only affects form APIs (e.g. Stripe).
+  - **Note:** the emitter path is flat only; the C# nested-schema generator (`generateNestedClasses`) isn't
+    reachable from `emitRequestClass`, so TS has no nested-class port yet. Revisit if the emitter path grows
+    nested support.
+- [x] **TS-C5 — Data Library TS emitter** (done 2026-07-16): `generateDataLibraryTypeScript.ts` emits
+  `dataGenerator.ts` — a `DataGenerator` class (request classes call `new DataGenerator().method()`),
+  importing the `@faker-js/faker` singleton instead of Bogus. Each method's `code` is pasted verbatim
+  (from the TS seed lib TS-C8 or the user); missing code → a throwing placeholder. Wired into
+  `TypeScriptEmitter.emitDataLibrary`. Tests in `test/dataLibraryTypeScript.test.ts` (strict compile w/
+  an ambient faker stub; guard shown to fail on a broken placeholder). Build + 93 tests green.
+  - **NB user-facing:** faker is a dependency of the generated PROJECT, not of core — core only emits the
+    `import`. On a locked-down machine it must be *detected + installed through the user's own registry*,
+    never bundled. See Api2TestVS TASKS.md NF-3b/NF-3c (requirements page + deploy preflight).
+- [x] **TS-C6 — test-file TS emitter** (done 2026-07-16): `generateTestTypeScript.ts` emits a Vitest
+  `describe/it` file (the C# MSTest/NUnit/xUnit split collapses to one framework). Ties the emitters
+  together — imports ApiMethods (C3) + DataGenerator (C5) + body class (C4), builds URL (path/query
+  interpolation) + body (`toJson`/`toFormBody`), calls the wrapper `(token, url, body)`, asserts
+  `response.ok` or a selected response handler. Wired into `TypeScriptEmitter.emitTest`. Tests in
+  `test/testTypeScript.test.ts` — content assertions + a strict compile inside the real
+  `Tests/<App>` · `Libraries` · `Classes/<App>` layout (guard shown to fail on wrong wrapper arg order).
+  Build + 97 tests green.
+  - **Resolves the TS-C1 open item — TS import strategy:** imports are RELATIVE paths computed from the
+    folder==namespace layout (`Tests/<App>/` → `../../Libraries/…`, `../../Classes/<App>/…`),
+    extensionless (Vitest's resolver handles it). No tsconfig `paths` needed.
+  - **Constraint for TS-C8:** curated TS wrapper methods MUST take `(token, url, requestBody)` — the
+    emitter calls them in that order, mirroring C#.
+- [x] **TS-C7 — E2E TS emitter** (done 2026-07-16): `generateE2ETestTypeScript.ts` turns an ordered
+  chain into a runnable Vitest test. Class-first — the send verb is derived from each class's HTTP method
+  + content-type (`postJson`/`putJson`/`get`/`delete`/`postForm`, the TS-C8 vocabulary); captured fields
+  (`extractFieldFromResponse`) flow into later steps; path `{placeholders}` bind from `args`; overrides →
+  `Object.assign(new Ref(), { prop: value })` with type-aware values; validators → `expect(...).toBe(true)`.
+  Method/Class pairing (a url-taking method consumes the class below it) ported. `ApiMethods.<idiomatic>`
+  calls via `tsSymbol`; relative imports (same strategy as TS-C6). Wired into `TypeScriptEmitter.emitE2ETest`.
+  Tests in `test/e2eTypeScript.test.ts` — a create→capture→get→validate chain, content + strict compile in
+  the real layout (guard shown to fail on wrong send derivation). Build + 105 tests green.
+  - **Deferred (follow-up):** the C# typed native-type extract (`ExtractField<T>` look-ahead / `varTypes`) —
+    TS emits the plain `extractFieldFromResponse` (string). Revisit if strict APIs need captured numeric ids
+    to stay numeric in request bodies (`Object.assign` sidesteps the compile error, so it's a fidelity, not
+    a compile, gap).
+- [x] **TS-C8 — language-keyed TS seed libraries** (done 2026-07-16): `data/libraries/typescript/`
+  `data-library.json` + `api-method-library.json`, wired into `defaultLibraries.ts` (`typescript` key
+  added to the `Partial` maps). Registry `methodName` stays PascalCase (the cross-language key); each
+  method's `code` defines the idiomatic camelCase symbol per `tsSymbol` (`PostJsonAsync` → `postJson`) —
+  so generated TS reads like TS. API Method Library is COMPLETE for the emit vocabulary: the five
+  class-first send helpers `postJson`/`putJson`/`get`/`delete`/`postForm` (each `(token, url, body)`,
+  reporting via `Reporter`), `extractFieldFromResponse`, `formUrlEncode`, success + negative validators,
+  and per-app token + base-path methods (base-path in BOTH libraries by design — DataGenerator for the
+  single-test flow, ApiMethods for E2E). Tests in `test/seedTypeScript.test.ts`: symbol↔`tsSymbol`
+  consistency (shown failing on a drifted symbol), and the seed emitted through TS-C3/TS-C5 type-checks.
+  Also added the shared `tsSymbol` transform (`tsNaming.ts`) + applied in TS-C4/TS-C6. Build + 103 green.
+  - **Follow-up (deferred): data-library long tail.** Only a core ~13-method Data Library set is ported;
+    C# has ~95. Port the rest (faker.js bodies) as needed — each is independent. Tracked here.
+  - **Enables TS-C7:** the E2E send-helper vocabulary now exists + is name-checked.
+
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._

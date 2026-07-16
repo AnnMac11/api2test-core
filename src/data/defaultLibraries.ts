@@ -17,24 +17,30 @@ import csharpDataLibrary from './libraries/csharp/data-library.json';
 import csharpApiMethodLibrary from './libraries/csharp/api-method-library.json';
 import pythonDataLibrary from './libraries/python/data-library.json';
 import pythonApiMethodLibrary from './libraries/python/api-method-library.json';
+import typescriptDataLibrary from './libraries/typescript/data-library.json';
+import typescriptApiMethodLibrary from './libraries/typescript/api-method-library.json';
 
-const DATA_LIBRARIES: Record<TargetLanguage, unknown> = {
+// Partial: not every TargetLanguage has a curated seed set. C#, Python and TypeScript are seeded; the
+// TS data set is a core subset (long tail tracked in TASKS.md TS-C8). getDefault* falls back to [].
+const DATA_LIBRARIES: Partial<Record<TargetLanguage, unknown>> = {
   csharp: csharpDataLibrary,
   python: pythonDataLibrary,
+  typescript: typescriptDataLibrary,
 };
-const API_METHOD_LIBRARIES: Record<TargetLanguage, unknown> = {
+const API_METHOD_LIBRARIES: Partial<Record<TargetLanguage, unknown>> = {
   csharp: csharpApiMethodLibrary,
   python: pythonApiMethodLibrary,
+  typescript: typescriptApiMethodLibrary,
 };
 
 /** The built-in data-generation methods for a target language (fresh copy, safe to mutate). */
 export function getDefaultDataLibrary(language: TargetLanguage = 'csharp'): DataMethodDto[] {
-  return structuredCloneArray(DATA_LIBRARIES[language] as DataMethodDto[]);
+  return structuredCloneArray((DATA_LIBRARIES[language] ?? []) as DataMethodDto[]);
 }
 
 /** The built-in HTTP wrapper / base-path / token methods for a target language (fresh copy). */
 export function getDefaultApiMethodLibrary(language: TargetLanguage = 'csharp'): ApiMethodLibraryDto[] {
-  return structuredCloneArray(API_METHOD_LIBRARIES[language] as ApiMethodLibraryDto[]);
+  return structuredCloneArray((API_METHOD_LIBRARIES[language] ?? []) as ApiMethodLibraryDto[]);
 }
 
 /**

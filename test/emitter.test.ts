@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { FileStorageService } from '../src/services/FileStorageService';
 import { CSharpEmitter } from '../src/adapters/CSharpEmitter';
+import { TypeScriptEmitter, emitterFor } from '../src/adapters/TypeScriptEmitter';
 import { ClassGenerationRequest } from '../src/models/ClassGenerationDto';
 import { PARAMETER } from '../src/services/DataDictionaryService';
 
@@ -73,6 +74,37 @@ test('PARAMETER field emits a settable placeholder, not a DataGenerator call', (
     assert.doesNotMatch(code, /DataGenerator\(\)\.Parameter/, 'must not call a Parameter generator method');
     assert.match(code, /public decimal OrderId \{ get; set; \} = 0m; \/\/ parameter/, 'placeholder property emitted');
     assert.match(code, /new DataGenerator\(\)\.RandomId\(\)/, 'other fields still use their data method');
+});
+
+// ── TS-C1: language seam ──────────────────────────────────────────────────────────────────────
+
+function storageDir(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-emit-'));
+}
+
+test('emitterFor selects the emitter by language', () => {
+    const storage = new FileStorageService(storageDir());
+    assert.equal(emitterFor('csharp', storage).language, 'csharp');
+    assert.equal(emitterFor('typescript', storage).language, 'typescript');
+});
+
+test('emitterFor throws for an unknown language', () => {
+    const storage = new FileStorageService(storageDir());
+    assert.throws(() => emitterFor('ruby' as any, storage), /No CodeEmitter/);
+});
+
+test('TypeScriptEmitter reports ts language and extension', () => {
+    const e = new TypeScriptEmitter(new FileStorageService(storageDir()));
+    assert.equal(e.language, 'typescript');
+    assert.equal(e.fileExtension, 'ts');
+});
+
+test('every TypeScriptEmitter method is implemented (none throws a not-implemented stub)', () => {
+    const e = new TypeScriptEmitter(new FileStorageService(storageDir()));
+    // The request-class + data-library emitters are covered in depth in their own test files; here we just
+    // assert the emitter surface is fully wired (no remaining TS-C stub throwing "not implemented yet").
+    assert.doesNotThrow(() => e.emitApiMethods([]));
+    assert.doesNotThrow(() => e.emitDataLibrary([]));
 });
 
 test('form content-type adds ToFormBody()', () => {

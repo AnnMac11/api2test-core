@@ -5,7 +5,7 @@
  * extension, web/enterprise app, Jira app) provide their own UI and wire storage/deploy/emit.
  *
  * Storage, code emission, and deploy are pluggable via the adapter interfaces in ./adapters
- * (StorageProvider — File/SQL/Mongo; CodeEmitter — C#/Python; DeployTarget — local/PR), selected
+ * (StorageProvider — File/SQL/Mongo; CodeEmitter — C#/TypeScript/Python; DeployTarget — local/PR), selected
  * by the consumer at install time. Defaults today: FileStorageService + CSharpEmitter.
  */
 
