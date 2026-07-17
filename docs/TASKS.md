@@ -102,8 +102,15 @@ against core. Bug-first per task; coordinate version bumps.
   re-deploy = clean no-op (`pushed:false`). Bug-first: destination-path guard shown failing on
   a root-deploying variant. `test/deployTestSet.test.ts` (6) drives REAL git against a local
   bare remote. Build clean, 181/181 green.
-- [ ] **REG-3 — CI results ingestion** (lift `ciResults.ts`). Pipeline posts run results back;
-  named ingestion tokens (X-Api-Key). Consumers: VS Code NF-4, Desktop Phase 5.
+- [x] **REG-3 — CI results ingestion. DONE 2026-07-17 (branch `develop`).** New
+  `services/ciIngestion.ts` (pure — clients keep HTTP + stores): `isValidIngestionKey(key,
+  tokens, legacyKey?)` (secure by default: nothing configured → nothing validates),
+  `attributeRelease(tag, timestamp, releases)` (explicit tag wins → date window → un-bucketed),
+  `parseCiReport(payload)` — **accepts BOTH pipeline formats** (TRX XML and Vitest JSON) into
+  one shape, and `buildCiExecution(raw, meta, { testCases, releases })` → the `source:'ci'`
+  Execution (rows matched by `methodNameOf`; an unmatched row kept verbatim — never silently
+  dropped, guard shown failing on a filtering variant). `test/ciIngestion.test.ts` (7). Build
+  clean, 188/188 green. Desktop `ciResults.ts` becomes a thin route over these (DA-8).
 - [ ] **APP-1 — applicationId-scoped base-path/token resolution.** The per-app URL/token rule is
   enterprise-client-only today; lift it so VS Code SP3-1 is a thin port.
 - [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do

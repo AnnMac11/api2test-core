@@ -67,6 +67,11 @@ export type { DeployDestinationDto, DeployDestinationInput } from './services/De
 export { deployTestSet } from './services/deployTestSet';
 export type { DeployTestSetOptions, DeployTestSetResult } from './services/deployTestSet';
 
+// CI results ingestion (REG-3) — parse a posted pipeline report (TRX or Vitest JSON), match rows
+// to test cases, attribute a release, build the source:'ci' Execution. Clients do HTTP + storage.
+export { isValidIngestionKey, attributeRelease, parseCiReport, buildCiExecution } from './services/ciIngestion';
+export type { IngestionTokenLike, ReleaseWindow, CiCaseRef, CiResultsMeta, CiExecResult, CiExecution } from './services/ciIngestion';
+
 // Managed local sandbox (SBX-1) — scaffold + maintain the runnable test project local Execute
 // deploys into (deploy model v2: never the user's workspace). Detect, never install.
 export { ensureSandbox, SANDBOX_SCAFFOLDERS } from './services/sandboxProject';
