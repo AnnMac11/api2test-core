@@ -32,9 +32,17 @@ Goal: VS Code gets Desktop's functionality; the enabling logic moves HERE so bot
 one implementation (clients stay UI + storage). From the 2026-07-17 review of Desktop `server/`
 against core. Bug-first per task; coordinate version bumps.
 
-- [ ] **DET-1 — toolchain detection.** One core detector from Desktop `dotnetInfo.ts`
-  (`detectDotnet`) + VS Code `environment.ts` (node/npm — a second copy, already drifting); python
-  probe later. Consumers: VS Code requirements page + NF-3c preflight, Desktop detect-and-prompt.
+- [x] **DET-1 — toolchain detection. DONE 2026-07-17 (branch `develop`).** New
+  `services/toolchainDetection.ts`: **language-symmetric** `detectToolchain(language)` →
+  `{ tools[], ready }` over a `TOOLCHAIN_PROBES` table with an entry per `TargetLanguage` —
+  csharp, typescript AND python equal citizens (per the 2026-07-17 steer: no hard-coded-C#
+  paths). Runner = VS Code's `cmd /c` shim (resolves `npm.cmd` via PATHEXT; subsumes Desktop's
+  bare-exe runner), injectable for tests. .NET depth (`detectDotnet`/`pickTfm`/`DotnetInfo`, for
+  the SBX-1 scaffold) is a separate function, NOT a privileged field on the shared shape; parsing
+  split into pure `parseSdkList`/`parseRuntimeMajors` driven by real `dotnet --list-*` output.
+  Bug-first: symmetry guard shown failing on an emptied python probe set, then restored.
+  `test/toolchainDetection.test.ts` (9). Build clean, 139/139 green. **Adoption (client work,
+  after core):** VS Code `environment.ts` toolchain half → core, Desktop drops `dotnetInfo.ts`.
 - [ ] **DEP-1 — deployUnit orchestration (controller only — the pieces all exist).** The sequence
   "resolve the classes a test needs → emit/write all artifacts → build-validate → run → report"
   from Desktop `deployUnit.ts`/`deployLibraries.ts`, parameterised by emitter + layout. Consumers:

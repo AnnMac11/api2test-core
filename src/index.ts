@@ -51,6 +51,11 @@ export { verifyEntitlement, UNLICENSED, LICENSE_PUBLIC_KEY } from './licensing/e
 export type { TokenStore, TrialStore, TrialData, AccessState, Access, LicenseManager } from './licensing/manager';
 export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
 
+// Toolchain detection (DET-1) — language-symmetric machine probes shared by every edition
+// (detect, never install). detectDotnet is the C# deep probe the sandbox scaffold consumes.
+export { detectToolchain, detectDotnet, pickTfm, parseSdkList, parseRuntimeMajors, probeVersion, TOOLCHAIN_PROBES } from './services/toolchainDetection';
+export type { ToolchainInfo, ToolStatus, DotnetInfo, ProbeRunner } from './services/toolchainDetection';
+
 // Curated libraries (single source of truth) — built-in Data Library + API Method Library, keyed by
 // target language. Editions seed from these (copy-if-missing + mergeDefaults) instead of own copies.
 export { getDefaultDataLibrary, getDefaultApiMethodLibrary, mergeDefaults } from './data/defaultLibraries';
