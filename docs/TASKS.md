@@ -92,12 +92,18 @@ against core. Bug-first per task; coordinate version bumps.
   variant). **User decision 2026-07-17: `path` is set on the destination in Admin and used
   automatically at deploy time — nothing asked per deploy** (clients add a path column to the
   destinations UI). `test/deployDestinations.test.ts` (7). Build clean, 175/175 green.
-- [ ] **REG-2/3 — deploy test sets to repo + CI results** (lift `gitDeploy.ts` / `gitAccess.ts` /
-  `ciResults.ts`). REG-2: deploy-a-test-set to a REG-1 destination. REG-3: results ingestion.
-  Consumers: VS Code deploy model v2 + NF-4, Desktop Phase 5. **0a decided 2026-07-17: REG-2
-  performs the push** — authoring/runs stay local; Deploy pushes the selected test set to the
-  destination repo (ensure-clone → core `deployUnit` under the destination `path` → commit →
-  push; machine git credentials, no stored secrets).
+- [x] **REG-2 — deploy a test set to a destination. DONE 2026-07-17 (branch `develop`).** New
+  `services/deployTestSet.ts`: `deployTestSet(cases, destination, { cloneBaseDir, emitter,
+  resolveClass, apiMethods, dataMethods })` — ensure-clone (tolerates an empty remote / missing
+  branch) → `deployUnit` under the destination's stored `path` (confined to the clone; traversal
+  rejected) → commit (explicit identity, works with no global git user) → push to the
+  destination branch. Never cleans (destination repos accumulate); machine git credentials, no
+  stored secrets; clone keyed by destination **id** so renames don't orphan it. Identical
+  re-deploy = clean no-op (`pushed:false`). Bug-first: destination-path guard shown failing on
+  a root-deploying variant. `test/deployTestSet.test.ts` (6) drives REAL git against a local
+  bare remote. Build clean, 181/181 green.
+- [ ] **REG-3 — CI results ingestion** (lift `ciResults.ts`). Pipeline posts run results back;
+  named ingestion tokens (X-Api-Key). Consumers: VS Code NF-4, Desktop Phase 5.
 - [ ] **APP-1 — applicationId-scoped base-path/token resolution.** The per-app URL/token rule is
   enterprise-client-only today; lift it so VS Code SP3-1 is a thin port.
 - [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do

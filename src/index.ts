@@ -62,6 +62,11 @@ export type { DeployCase, ResolvedClass, DeployUnitOptions, DeployUnitResult } f
 export { DeployDestinationService } from './services/DeployDestinationService';
 export type { DeployDestinationDto, DeployDestinationInput } from './services/DeployDestinationService';
 
+// Deploy a test set to a destination (REG-2) — ensure-clone -> deployUnit under the destination's
+// stored path -> commit -> push. Machine git credentials; the only step that leaves the machine.
+export { deployTestSet } from './services/deployTestSet';
+export type { DeployTestSetOptions, DeployTestSetResult } from './services/deployTestSet';
+
 // Managed local sandbox (SBX-1) — scaffold + maintain the runnable test project local Execute
 // deploys into (deploy model v2: never the user's workspace). Detect, never install.
 export { ensureSandbox, SANDBOX_SCAFFOLDERS } from './services/sandboxProject';
