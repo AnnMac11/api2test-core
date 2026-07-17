@@ -37,6 +37,23 @@ note the coordinated version bump on anything that ships.
 
 ## State of play (update each session)
 
+**As of 2026-07-17 (later session — parity lifts):**
+
+- **⭐ Desktop→core parity series COMPLETE except PY-1** (all committed on `develop`, pushed
+  through REG-1; DET-1 `759c076` → APP-1 `1687beb`): DET-1 toolchain detection
+  (language-symmetric), DEP-1 `deployUnit` (+ `CodeEmitter` file-naming contract), SBX-1
+  `ensureSandbox` (C# csproj + TS vitest scaffold), SEED-1 `refreshDefaults`
+  (**take-ownership-on-edit decision** — clients flip `isCustom` on edit), REG-1
+  `DeployDestinationService` (**path lives on the destination**, set in Admin, auto-applied at
+  deploy), REG-2 `deployTestSet` (real-git tested), REG-3 CI ingestion (accepts TRX AND Vitest
+  JSON), APP-1 `methodScope` (+ fixed real TS seed drift: missing `applicationId` links,
+  off-taxonomy categories). All bug-first; **build clean, 193/193 green.** PY-1 stays parked
+  until the TS extension path proves out.
+- **Client adoption is mapped, not started:** Desktop DA-4..DA-9 in `../api2test/docs/TASKS.md`
+  (left uncommitted there — that tree has unrelated in-progress work); VS Code notes on SP1-2/
+  SP2-1/SP3-1 + deploy model v2 in `../Api2TestVS/docs/TASKS.md`. LIC-5 adoption still pending —
+  both clients remain broken against the new core dist until it lands.
+
 **As of 2026-07-17:**
 
 - **⭐ Licensing restructured (LIC-1..4 DONE, local uncommitted; branch `develop`).** The plan/
