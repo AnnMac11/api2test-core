@@ -6,7 +6,7 @@ Project guidance loaded at the start of every session.
 the Desktop app (**`../api2test`**) and the VS Code extension (**`../Api2TestVS`**). Changes here affect
 both editions — coordinate version bumps.
 
-> **Start here:** for the full project orientation read [`../api2test/docs/ONBOARDING.md`](../api2test/docs/ONBOARDING.md)
+> **Start here:** for the full project orientation read [`../api2test/docs/HANDOVER.md`](../api2test/docs/HANDOVER.md)
 > (the Desktop repo holds the canonical onboarding). Then this repo's `docs/TASKS.md` for core tasks.
 
 ## Testing
@@ -27,7 +27,7 @@ output** (e.g. the generated property is `public int Id`, not just "a class was 
   repo + branch if it has one. Do not rely on the live tracker to remember it.
 - **When a task is done:** move it to the Done section (don't delete — we re-verify), and note the
   branch/PR. "Done" means the **bug-first test protocol** was followed (see
-  `../api2test/docs/ONBOARDING.md`): identify the test that should have caught it → alter it to FAIL on
+  `../api2test/docs/HANDOVER.md`): identify the test that should have caught it → alter it to FAIL on
   the broken code → fix → same test passes, both runs shown. An old test passing unchanged after a fix
   is a red flag.
 - **End of session:** update `TASKS.md` so the next thread starts current.

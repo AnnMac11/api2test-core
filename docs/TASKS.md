@@ -26,6 +26,69 @@ here affect both editions — note the coordinated version bump on any task that
   the CONCRETE generated output (`public int Id`, not "a class was produced") — see
   `../api2test/tests/README.md` "How deep".
 
+### Desktop→core lifts for VS Code parity — added 2026-07-17
+
+Goal: VS Code gets Desktop's functionality; the enabling logic moves HERE so both editions consume
+one implementation (clients stay UI + storage). From the 2026-07-17 review of Desktop `server/`
+against core. Bug-first per task; coordinate version bumps.
+
+- [ ] **DET-1 — toolchain detection.** One core detector from Desktop `dotnetInfo.ts`
+  (`detectDotnet`) + VS Code `environment.ts` (node/npm — a second copy, already drifting); python
+  probe later. Consumers: VS Code requirements page + NF-3c preflight, Desktop detect-and-prompt.
+- [ ] **DEP-1 — deployUnit orchestration (controller only — the pieces all exist).** The sequence
+  "resolve the classes a test needs → emit/write all artifacts → build-validate → run → report"
+  from Desktop `deployUnit.ts`/`deployLibraries.ts`, parameterised by emitter + layout. Consumers:
+  VS Code SP2-1, Desktop drops its copy.
+- [ ] **SBX-1 — managed local sandbox.** Scaffold + maintain a runnable test project (C# csproj /
+  TS package.json+tsconfig) for local Execute — from Desktop `sandboxProject.ts` + the NF-2 vitest
+  scaffold. In VS Code this is invisible plumbing (deploy model v2: local runs never touch the
+  user's workspace).
+- [ ] **SEED-1 — seed refresh rule.** Merge-on-activation: curated seeds replace `isCustom: false`
+  entries, user methods untouched (Desktop `seedLibraries.ts`; VS Code SP1-2 consumes).
+- [ ] **REG-1/2/3 — deploy test sets to repo + CI results** (lift `gitDeploy.ts` / `gitAccess.ts` /
+  `ciResults.ts` / `cicdConfig.ts`). REG-1: **named destinations** model (name → repo/path/branch,
+  environment-linked; create-on-first-use). REG-2: deploy-a-test-set to a destination. REG-3:
+  results ingestion. Consumers: VS Code deploy model v2 + NF-4, Desktop Phase 5. **0a decided
+  2026-07-17: REG-2 performs the push** — authoring/runs stay local; Deploy pushes the selected
+  test set to the destination repo.
+- [ ] **APP-1 — applicationId-scoped base-path/token resolution.** The per-app URL/token rule is
+  enterprise-client-only today; lift it so VS Code SP3-1 is a thin port.
+- [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do
+  after the TS extension path proves out.
+
+### Licensing restructure (LIC series) — added 2026-07-17
+
+Goal: **core owns all licence logic** (verify + trial clock + access rule); apps keep only token
+storage + UI. Authority: `../api2test/docs/HANDOVER.md` §4 — whole-app gate, **no
+per-feature gating**, one token type, lifetime vs subscription differ only in `exp`. Ships to both
+editions — coordinate the version bump. Bug-first per task.
+
+- [x] **LIC-1 — remove the plan/feature layer. DONE 2026-07-17 (local, uncommitted).**
+  `licensing/features.ts` deleted; `hasFeature` gone; claims now `sub`, `exp`, `iat?`, `iss?`;
+  `Entitlement` = `{ valid, expiresAt, reason? }`; `FREE_ENTITLEMENT` → `UNLICENSED`. Verifier
+  IGNORES unknown claims (end-game open — token shape stays extensible). Bug-first: rewrote
+  `test/entitlements.test.ts` to the new model FIRST — 3 red on the old code (minimal token
+  rejected as 'unknown plan'; unknown-claims; UNLICENSED missing) → implemented → 9/9 green.
+- [x] **LIC-2 + LIC-3 — trial clock + `createLicenseManager`. DONE 2026-07-17 (one module,
+  local, uncommitted).** New `licensing/manager.ts`: `createLicenseManager({ tokenStore,
+  trialStore, publicKeyPem?, trialDays? })` → `{ getAccess, enterKey, removeKey, getToken }`
+  (async — VS Code SecretStorage is async; Desktop wraps fs trivially). `getAccess(now)` =
+  valid token wins → trial (`daysLeft`, stamped once, soft by design) → expired; `TRIAL_DAYS=60`.
+  `test/licenseManager.test.ts` (7) ports Desktop `trialStore` semantics over in-memory stores;
+  the store-only-if-valid guard PROVEN (shown failing on a deliberately-broken variant, then
+  restored green). Exported from `index.ts`.
+- [x] **LIC-4 — key tooling. DONE 2026-07-17 (correction: the scripts DID exist).**
+  `scripts/license/{generate-keys,sign}.js` were already there — updated instead of created:
+  `sign.js` drops the `plan` claim (minimal claims, `--key` override), `generate-keys.js` takes an
+  optional out-dir. New `test/licenseScripts.test.ts` (3) drives the REAL scripts end-to-end
+  (generate → sign → `verifyEntitlement`; pins the claims shape to exactly sub/exp/iat/iss).
+  (Prod keypair swap stays Desktop Phase 7 #10.) **Core total: build clean, 130/130 tests green.**
+- [ ] **LIC-5 — adoption (NEXT — clients now BROKEN against new core dist until this lands).**
+  Desktop: `licenseStore`/`trialStore` → thin store adapters over the manager; licence route/panel
+  drop plan/features; 3 test files rewritten (removals listed in `../api2test/docs/TASKS.md`
+  Phase 4). VS Code: SP4-1b/c — `licenseService` onto the manager, delete `featureEnabled` gates.
+  Their old imports (`hasFeature`, `FREE_ENTITLEMENT`, `.plan`) no longer exist in core.
+
 ### TypeScript emitters (TS-C series) — added 2026-07-16
 
 Goal: give the engine a TypeScript emit path parallel to the C# one, so the VS Code extension (and

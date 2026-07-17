@@ -15,8 +15,8 @@ note the coordinated version bump on anything that ships.
 ## The docs (4, names shared across repos)
 
 1. [`TASKS.md`](TASKS.md) — **source of truth for open core tasks** + Done (kept for re-verification).
-2. `USER_MANUAL.md` — _(not present yet; core is a library, so user docs live in the editions.)_
-3. `DEVELOPER_MANUAL.md` — _(not present yet.)_
+2. `USER_MANUAL.md` — _(not present; core is a library, so user docs live in the editions.)_
+3. [`DEVELOPER_MANUAL.md`](DEVELOPER_MANUAL.md) — module map + the licensing chapter (created 2026-07-17).
 4. `HANDOVER.md` — this file.
 
 ## Architecture (where things live)
@@ -36,6 +36,22 @@ note the coordinated version bump on anything that ships.
 - **Build/test:** `npm run build` (tsc), `npm test` (node:test over `test/*.test.ts`).
 
 ## State of play (update each session)
+
+**As of 2026-07-17:**
+
+- **⭐ Licensing restructured (LIC-1..4 DONE, local uncommitted; branch `develop`).** The plan/
+  feature layer is GONE (no free/pro/enterprise, no `hasFeature` — whole-app gate per
+  `../api2test/docs/HANDOVER.md` §4). Claims minimal (`sub`/`exp`/`iat?`/`iss?`), unknown claims
+  ignored (commercial end-game deliberately open). New `licensing/manager.ts`:
+  `createLicenseManager({ tokenStore, trialStore })` → `getAccess()` =
+  `licensed | trial (daysLeft, 60d, stamped once) | expired`; `enterKey` stores only-if-valid.
+  Key scripts updated (`sign.js` minimal claims, `--key`). All bug-first; **build clean, 130/130
+  green.** Detail: TASKS.md LIC entries + `DEVELOPER_MANUAL.md` §3.
+- **⚠ BOTH clients are broken against the new core dist until LIC-5 (adoption)** — they still
+  import removed `hasFeature`/`FREE_ENTITLEMENT`/`.plan`. Deliberate; adoption is client work.
+- **Agreed sequence (2026-07-17): finish CORE first, then the two editions.** Next in core: the
+  Desktop→core parity lifts (DET-1 detection, DEP-1 deployUnit, SBX-1 sandbox, SEED-1 seed
+  refresh, REG-1/2/3 destinations/deploy/results, APP-1 per-app URL+token, PY-1) — see TASKS.md.
 
 **As of 2026-07-16:**
 

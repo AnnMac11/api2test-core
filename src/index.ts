@@ -43,11 +43,13 @@ export { GENERATED_ROOT, librariesNs, classesNs, testsNs, librariesDir, classesD
 export { generateDataLibraryCode } from './services/generateDataLibrary';
 export type { DataMethodCode } from './services/generateDataLibrary';
 
-// Licensing / entitlements — shared premium-feature gating (subscription via signed tokens).
-export type { Feature, Plan } from './licensing/features';
-export { ALL_FEATURES, PLAN_FEATURES } from './licensing/features';
+// Licensing — the WHOLE-APP gate shared by every edition (no per-feature gating, no free tier).
+// Clients implement TokenStore/TrialStore and call createLicenseManager().getAccess(); see
+// docs/DEVELOPER_MANUAL.md §Licensing.
 export type { Entitlement, EntitlementClaims } from './licensing/entitlements';
-export { verifyEntitlement, hasFeature, FREE_ENTITLEMENT, LICENSE_PUBLIC_KEY } from './licensing/entitlements';
+export { verifyEntitlement, UNLICENSED, LICENSE_PUBLIC_KEY } from './licensing/entitlements';
+export type { TokenStore, TrialStore, TrialData, AccessState, Access, LicenseManager } from './licensing/manager';
+export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
 
 // Curated libraries (single source of truth) — built-in Data Library + API Method Library, keyed by
 // target language. Editions seed from these (copy-if-missing + mergeDefaults) instead of own copies.

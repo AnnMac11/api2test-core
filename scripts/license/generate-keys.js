@@ -14,7 +14,8 @@ const { generateKeyPairSync } = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const keysDir = path.join(__dirname, 'keys');
+// Optional output dir (used by tests); defaults to the gitignored keys/ next to this script.
+const keysDir = process.argv[2] || path.join(__dirname, 'keys');
 fs.mkdirSync(keysDir, { recursive: true });
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');

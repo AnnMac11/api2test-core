@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { generateKeyPairSync, sign } from 'crypto';
-import { verifyEntitlement, hasFeature, FREE_ENTITLEMENT } from '../src/licensing/entitlements';
+import { verifyEntitlement, UNLICENSED } from '../src/licensing/entitlements';
 
 // Generate a throwaway key pair for the tests and forge tokens with it.
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
@@ -20,39 +20,42 @@ function makeToken(payload: Record<string, unknown>, key = privateKey): string {
 const future = Math.floor(Date.now() / 1000) + 3600;
 const past = Math.floor(Date.now() / 1000) - 3600;
 
-test('no token -> free tier, no features', () => {
+test('no token -> unlicensed', () => {
   const e = verifyEntitlement(null, pubPem);
   assert.equal(e.valid, false);
-  assert.equal(e.plan, 'free');
-  assert.deepEqual(e.features, []);
-  assert.equal(hasFeature(e, 'e2e'), false);
+  assert.equal(e.reason, 'no token');
 });
 
-test('valid pro token unlocks all premium features', () => {
-  const e = verifyEntitlement(makeToken({ sub: 'c1', plan: 'pro', exp: future }), pubPem);
+test('minimal claims (sub + exp) verify valid — no plan claim required', () => {
+  const e = verifyEntitlement(makeToken({ sub: 'c1', exp: future }), pubPem);
   assert.equal(e.valid, true);
-  assert.equal(e.plan, 'pro');
-  assert.equal(hasFeature(e, 'e2e'), true);
-  assert.equal(hasFeature(e, 'testSets'), true);
-  assert.equal(hasFeature(e, 'dashboard'), true);
+  assert.ok(e.expiresAt instanceof Date);
 });
 
-test('explicit features override the plan default', () => {
-  const e = verifyEntitlement(makeToken({ sub: 'c1', plan: 'pro', features: ['e2e'], exp: future }), pubPem);
-  assert.deepEqual(e.features, ['e2e']);
-  assert.equal(hasFeature(e, 'dashboard'), false);
+test('unknown claims are IGNORED — the commercial end-game is open, the token shape stays extensible', () => {
+  // A future backend may add product/label/whatever claims; old clients must keep verifying.
+  const e = verifyEntitlement(
+    makeToken({ sub: 'c1', exp: future, plan: 'legacy', product: 'desktop', anything: 42 }),
+    pubPem,
+  );
+  assert.equal(e.valid, true);
 });
 
-test('expired token -> free tier (subscription lapse)', () => {
-  const e = verifyEntitlement(makeToken({ sub: 'c1', plan: 'pro', exp: past }), pubPem);
+test('expired token -> invalid (subscription lapse)', () => {
+  const e = verifyEntitlement(makeToken({ sub: 'c1', exp: past }), pubPem);
   assert.equal(e.valid, false);
   assert.equal(e.reason, 'expired');
 });
 
+test('missing exp -> invalid', () => {
+  const e = verifyEntitlement(makeToken({ sub: 'c1' }), pubPem);
+  assert.equal(e.valid, false);
+});
+
 test('tampered payload fails the signature check', () => {
-  const token = makeToken({ sub: 'c1', plan: 'free', exp: future });
+  const token = makeToken({ sub: 'c1', exp: future });
   const [h, , s] = token.split('.');
-  const forged = `${h}.${b64url(JSON.stringify({ sub: 'c1', plan: 'enterprise', exp: future }))}.${s}`;
+  const forged = `${h}.${b64url(JSON.stringify({ sub: 'someone-else', exp: future }))}.${s}`;
   const e = verifyEntitlement(forged, pubPem);
   assert.equal(e.valid, false);
   assert.equal(e.reason, 'bad signature');
@@ -60,16 +63,16 @@ test('tampered payload fails the signature check', () => {
 
 test('token signed by a different key is rejected', () => {
   const other = generateKeyPairSync('ed25519').privateKey;
-  const e = verifyEntitlement(makeToken({ sub: 'c1', plan: 'pro', exp: future }, other), pubPem);
+  const e = verifyEntitlement(makeToken({ sub: 'c1', exp: future }, other), pubPem);
   assert.equal(e.valid, false);
 });
 
-test('malformed token -> free tier', () => {
+test('malformed token -> unlicensed', () => {
   assert.equal(verifyEntitlement('not.a.token', pubPem).valid, false);
   assert.equal(verifyEntitlement('garbage', pubPem).valid, false);
 });
 
-test('FREE_ENTITLEMENT is locked down', () => {
-  assert.equal(FREE_ENTITLEMENT.valid, false);
-  assert.deepEqual(FREE_ENTITLEMENT.features, []);
+test('UNLICENSED is locked down', () => {
+  assert.equal(UNLICENSED.valid, false);
+  assert.equal(UNLICENSED.expiresAt, null);
 });
