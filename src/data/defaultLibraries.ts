@@ -60,7 +60,72 @@ export function mergeDefaults<T>(
   return additions.length ? [...existing, ...additions] : existing;
 }
 
+/** What a seed refresh did — `replacedItems`/`addedItems` let a DB-backed client persist only those rows. */
+export interface RefreshResult<T> {
+  items: T[];
+  /** Curated entries that replaced a stale shipped copy (each keeps the stored item's id). */
+  replacedItems: T[];
+  /** Curated entries appended because they were missing. */
+  addedItems: T[];
+  replaced: number;
+  added: number;
+  /** False when nothing differs — clients skip the write. */
+  changed: boolean;
+}
+
+/**
+ * Refresh a user's collection from the curated defaults (SEED-1, merge-on-activation):
+ *
+ *   - a shipped copy (`isCustom` not true — missing counts as shipped, older installs predate the
+ *     flag) whose curated version changed is REPLACED, keeping the stored `id` so references survive;
+ *   - anything user-owned (`isCustom: true`) is never touched, and its key blocks the curated
+ *     version from being appended as a duplicate;
+ *   - user methods outside the curated set are untouched;
+ *   - new curated methods are appended.
+ *
+ * Clients flip `isCustom` to true when a user edits a built-in (take-ownership-on-edit), which is
+ * what makes the replace safe. Supersedes {@link mergeDefaults} (kept for existing callers).
+ */
+export function refreshDefaults<T extends { id?: string; isCustom?: boolean }>(
+  existing: T[],
+  defaults: T[],
+  keyOf: (item: T) => string = (item) => String((item as any).methodName ?? (item as any).id ?? '').toLowerCase(),
+): RefreshResult<T> {
+  const curatedByKey = new Map(defaults.map((d) => [keyOf(d), d]));
+  const replacedItems: T[] = [];
+
+  const items = existing.map((item) => {
+    const curated = curatedByKey.get(keyOf(item));
+    if (!curated || item.isCustom === true) return item;
+    const replacement = { ...curated, ...(item.id !== undefined ? { id: item.id } : {}) };
+    if (stableStringify(replacement) === stableStringify(item)) return item; // already current
+    replacedItems.push(replacement);
+    return replacement;
+  });
+
+  const seen = new Set(existing.map(keyOf));
+  const addedItems = defaults.filter((d) => !seen.has(keyOf(d)));
+
+  return {
+    items: addedItems.length ? [...items, ...addedItems] : items,
+    replacedItems,
+    addedItems,
+    replaced: replacedItems.length,
+    added: addedItems.length,
+    changed: replacedItems.length > 0 || addedItems.length > 0,
+  };
+}
+
 /** JSON deep-copy of an array (imported JSON modules are shared/frozen-ish; never hand them out raw). */
 function structuredCloneArray<T>(arr: T[]): T[] {
   return JSON.parse(JSON.stringify(arr)) as T[];
+}
+
+/** JSON with object keys sorted, so equality is property-order-insensitive. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
 }

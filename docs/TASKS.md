@@ -70,8 +70,18 @@ against core. Bug-first per task; coordinate version bumps.
   config. Bug-first: strict-mode compile-contract guard shown failing on a `strict: false`
   scaffold. `test/sandboxProject.test.ts` (8). Build clean, 161/161 green. **Adoption:** VS Code
   local Execute (invisible plumbing); Desktop DA-5 (recorded in `../api2test/docs/TASKS.md`).
-- [ ] **SEED-1 — seed refresh rule.** Merge-on-activation: curated seeds replace `isCustom: false`
-  entries, user methods untouched (Desktop `seedLibraries.ts`; VS Code SP1-2 consumes).
+- [x] **SEED-1 — seed refresh rule. DONE 2026-07-17 (branch `develop`).** New `refreshDefaults`
+  in `data/defaultLibraries.ts` → `{ items, replacedItems, addedItems, replaced, added, changed }`:
+  shipped copies (`isCustom` not true; missing flag = shipped) are replaced by the current curated
+  version (stored `id` preserved so references survive), user-owned (`isCustom: true`) never
+  touched (and blocks a duplicate append), missing curated methods appended, `changed: false`
+  when nothing differs (clients skip the write; property-order-insensitive compare).
+  `replacedItems`/`addedItems` let a DB-backed client (enterprise SQL/Mongo) persist only those
+  rows — no extra layer needed. **Decision (user, 2026-07-17): take-ownership-on-edit** — clients
+  flip `isCustom` to true when a user edits a built-in, which is what makes the replace safe;
+  that flip is client work (VS Code SP1-2, Desktop DA-6). `mergeDefaults` kept for existing
+  callers. Bug-first: propagation guard shown failing on a copy-if-missing variant.
+  `test/seedRefresh.test.ts` (7). Build clean, 168/168 green.
 - [ ] **REG-1/2/3 — deploy test sets to repo + CI results** (lift `gitDeploy.ts` / `gitAccess.ts` /
   `ciResults.ts` / `cicdConfig.ts`). REG-1: **named destinations** model (name → repo/path/branch,
   environment-linked; create-on-first-use). REG-2: deploy-a-test-set to a destination. REG-3:

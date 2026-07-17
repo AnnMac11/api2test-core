@@ -69,7 +69,8 @@ export type { ToolchainInfo, ToolStatus, DotnetInfo, ProbeRunner } from './servi
 
 // Curated libraries (single source of truth) — built-in Data Library + API Method Library, keyed by
 // target language. Editions seed from these (copy-if-missing + mergeDefaults) instead of own copies.
-export { getDefaultDataLibrary, getDefaultApiMethodLibrary, mergeDefaults } from './data/defaultLibraries';
+export { getDefaultDataLibrary, getDefaultApiMethodLibrary, mergeDefaults, refreshDefaults } from './data/defaultLibraries';
+export type { RefreshResult } from './data/defaultLibraries';
 
 // E2E chain generation + local test runner (lifted from the enterprise app — shared by all editions).
 export { generateTestForRow, methodName as e2eMethodName } from './services/E2ETestGenerationService';
