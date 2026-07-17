@@ -57,6 +57,11 @@ export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
 export { deployUnit, buildDeployedUnit, BUILD_VALIDATORS, cleanGeneratedArtifacts, safeArtifactName, safeFileName, projectDirOf } from './services/deployUnit';
 export type { DeployCase, ResolvedClass, DeployUnitOptions, DeployUnitResult } from './services/deployUnit';
 
+// Named deploy destinations (REG-1) — name -> repo/branch/path, set in Admin, selected at deploy
+// time (the stored path is used automatically). REG-2 performs the push; REG-3 ingests results.
+export { DeployDestinationService } from './services/DeployDestinationService';
+export type { DeployDestinationDto, DeployDestinationInput } from './services/DeployDestinationService';
+
 // Managed local sandbox (SBX-1) — scaffold + maintain the runnable test project local Execute
 // deploys into (deploy model v2: never the user's workspace). Detect, never install.
 export { ensureSandbox, SANDBOX_SCAFFOLDERS } from './services/sandboxProject';

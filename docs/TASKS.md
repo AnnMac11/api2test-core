@@ -82,12 +82,22 @@ against core. Bug-first per task; coordinate version bumps.
   that flip is client work (VS Code SP1-2, Desktop DA-6). `mergeDefaults` kept for existing
   callers. Bug-first: propagation guard shown failing on a copy-if-missing variant.
   `test/seedRefresh.test.ts` (7). Build clean, 168/168 green.
-- [ ] **REG-1/2/3 — deploy test sets to repo + CI results** (lift `gitDeploy.ts` / `gitAccess.ts` /
-  `ciResults.ts` / `cicdConfig.ts`). REG-1: **named destinations** model (name → repo/path/branch,
-  environment-linked; create-on-first-use). REG-2: deploy-a-test-set to a destination. REG-3:
-  results ingestion. Consumers: VS Code deploy model v2 + NF-4, Desktop Phase 5. **0a decided
-  2026-07-17: REG-2 performs the push** — authoring/runs stay local; Deploy pushes the selected
-  test set to the destination repo.
+- [x] **REG-1 — named destinations model. DONE 2026-07-17 (branch `develop`).** New
+  `DeployDestinationService` over `StorageProvider` (File/SQL/Mongo all work):
+  `DeployDestinationDto` = `{ id, name, repoUrl, branch ('main' default), path ('' = repo
+  root), environmentId?, description? }`. add/update/remove/list, `getByName`
+  (case-insensitive — picker/one-click key), unique-name + required-URL validation,
+  `getOrCreate` for create-on-first-deploy where **an existing definition wins** (a deploy
+  prompt can never silently redefine where a name points; guard shown failing on a redefining
+  variant). **User decision 2026-07-17: `path` is set on the destination in Admin and used
+  automatically at deploy time — nothing asked per deploy** (clients add a path column to the
+  destinations UI). `test/deployDestinations.test.ts` (7). Build clean, 175/175 green.
+- [ ] **REG-2/3 — deploy test sets to repo + CI results** (lift `gitDeploy.ts` / `gitAccess.ts` /
+  `ciResults.ts`). REG-2: deploy-a-test-set to a REG-1 destination. REG-3: results ingestion.
+  Consumers: VS Code deploy model v2 + NF-4, Desktop Phase 5. **0a decided 2026-07-17: REG-2
+  performs the push** — authoring/runs stay local; Deploy pushes the selected test set to the
+  destination repo (ensure-clone → core `deployUnit` under the destination `path` → commit →
+  push; machine git credentials, no stored secrets).
 - [ ] **APP-1 — applicationId-scoped base-path/token resolution.** The per-app URL/token rule is
   enterprise-client-only today; lift it so VS Code SP3-1 is a thin port.
 - [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do
