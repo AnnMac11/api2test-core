@@ -57,6 +57,11 @@ export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
 export { deployUnit, buildDeployedUnit, BUILD_VALIDATORS, cleanGeneratedArtifacts, safeArtifactName, safeFileName, projectDirOf } from './services/deployUnit';
 export type { DeployCase, ResolvedClass, DeployUnitOptions, DeployUnitResult } from './services/deployUnit';
 
+// Managed local sandbox (SBX-1) — scaffold + maintain the runnable test project local Execute
+// deploys into (deploy model v2: never the user's workspace). Detect, never install.
+export { ensureSandbox, SANDBOX_SCAFFOLDERS } from './services/sandboxProject';
+export type { EnsureSandboxOptions, EnsureSandboxResult } from './services/sandboxProject';
+
 // Toolchain detection (DET-1) — language-symmetric machine probes shared by every edition
 // (detect, never install). detectDotnet is the C# deep probe the sandbox scaffold consumes.
 export { detectToolchain, detectDotnet, pickTfm, parseSdkList, parseRuntimeMajors, probeVersion, TOOLCHAIN_PROBES } from './services/toolchainDetection';

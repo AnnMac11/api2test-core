@@ -58,10 +58,18 @@ against core. Bug-first per task; coordinate version bumps.
   discover nothing). `test/deployUnit.test.ts` (14). Build clean, 153/153 green. **Adoption:**
   VS Code SP2-1; Desktop drops `deployUnit.ts`/`deployLibraries.ts` + most of `deploy.ts` —
   task recorded in `../api2test/docs/TASKS.md` (2026-07-17).
-- [ ] **SBX-1 — managed local sandbox.** Scaffold + maintain a runnable test project (C# csproj /
-  TS package.json+tsconfig) for local Execute — from Desktop `sandboxProject.ts` + the NF-2 vitest
-  scaffold. In VS Code this is invisible plumbing (deploy model v2: local runs never touch the
-  user's workspace).
+- [x] **SBX-1 — managed local sandbox. DONE 2026-07-17 (branch `develop`).** New
+  `services/sandboxProject.ts`: `ensureSandbox(language, dir)` → `{ ok, reason?, projectPath?,
+  tfm?, depsReady? }`, language-keyed off `SANDBOX_SCAFFOLDERS` (csharp + typescript; python →
+  honest not-yet pointing at PY-1). C# = Desktop's scaffold lifted (tfm from core `detectDotnet`,
+  pinned MSTest/Bogus csproj, write-only-on-change so no needless restores). TS = the NF-2
+  scaffold created here: `package.json` (private; typescript/vitest/@faker-js/faker devDeps) +
+  `tsconfig.json` pinned to the emit layer's proven compile settings (strict/ES2022/bundler/
+  noEmit); **install stays an explicit client step** through the user's own registry, surfaced
+  as `depsReady`. Detect-never-install throughout; caller keeps `dir`, edition gate + runner
+  config. Bug-first: strict-mode compile-contract guard shown failing on a `strict: false`
+  scaffold. `test/sandboxProject.test.ts` (8). Build clean, 161/161 green. **Adoption:** VS Code
+  local Execute (invisible plumbing); Desktop DA-5 (recorded in `../api2test/docs/TASKS.md`).
 - [ ] **SEED-1 — seed refresh rule.** Merge-on-activation: curated seeds replace `isCustom: false`
   entries, user methods untouched (Desktop `seedLibraries.ts`; VS Code SP1-2 consumes).
 - [ ] **REG-1/2/3 — deploy test sets to repo + CI results** (lift `gitDeploy.ts` / `gitAccess.ts` /
