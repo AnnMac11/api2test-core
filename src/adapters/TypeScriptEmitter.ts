@@ -19,6 +19,12 @@ import { E2EPage, E2ETestCaseRow, E2EGenContext } from '../models/E2EDto';
 export class TypeScriptEmitter implements CodeEmitter {
     readonly language: TargetLanguage = 'typescript';
     readonly fileExtension = 'ts';
+    // apiMethods/dataGenerator are the exact specifiers the emitted relative imports resolve (TS-C6);
+    // .test.ts is required for Vitest discovery (default include: **/*.{test,spec}.?(c|m)[jt]s).
+    readonly libraryFileNames = { apiMethods: 'apiMethods.ts', dataLibrary: 'dataGenerator.ts' };
+
+    testFileName(baseName: string): string { return `${baseName}.test.ts`; }
+    classFileName(baseName: string): string { return `${baseName}.ts`; }
 
     // Storage is accepted for parity with CSharpEmitter's constructor signature, but TS rendering is pure
     // (no persistence), so it is unused — the selector passes one uniformly for both emitters.

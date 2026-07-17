@@ -22,6 +22,22 @@ export interface CodeEmitter {
     readonly fileExtension: string;
 
     /**
+     * Deployed file names for the two shared libraries. Idiom- and toolchain-bound: the TS names
+     * (`apiMethods.ts` / `dataGenerator.ts`) are what the emitted relative imports resolve; the C#
+     * names match the class names.
+     */
+    readonly libraryFileNames: { apiMethods: string; dataLibrary: string };
+
+    /**
+     * File name for a deployed test artifact. Toolchain-bound: Vitest only discovers
+     * `*.test.ts`/`*.spec.ts`, MSTest conventionally `*Tests.cs`.
+     */
+    testFileName(baseName: string): string;
+
+    /** File name for a deployed request-class artifact (must match the emitted import specifier). */
+    classFileName(baseName: string): string;
+
+    /**
      * Render a request-body class for the given request.
      * Returns `null` when the endpoint has no body fields (nothing to serialise).
      */

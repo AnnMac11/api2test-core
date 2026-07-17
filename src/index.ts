@@ -51,6 +51,12 @@ export { verifyEntitlement, UNLICENSED, LICENSE_PUBLIC_KEY } from './licensing/e
 export type { TokenStore, TrialStore, TrialData, AccessState, Access, LicenseManager } from './licensing/manager';
 export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
 
+// deployUnit (DEP-1) — the one code path that deploys a complete compilable unit (libraries +
+// tests + referenced classes) into a target project, parameterised by emitter + layout. Clients
+// keep their stores: classes via resolveClass, library methods passed in.
+export { deployUnit, buildDeployedUnit, BUILD_VALIDATORS, cleanGeneratedArtifacts, safeArtifactName, safeFileName, projectDirOf } from './services/deployUnit';
+export type { DeployCase, ResolvedClass, DeployUnitOptions, DeployUnitResult } from './services/deployUnit';
+
 // Toolchain detection (DET-1) — language-symmetric machine probes shared by every edition
 // (detect, never install). detectDotnet is the C# deep probe the sandbox scaffold consumes.
 export { detectToolchain, detectDotnet, pickTfm, parseSdkList, parseRuntimeMajors, probeVersion, TOOLCHAIN_PROBES } from './services/toolchainDetection';

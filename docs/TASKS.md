@@ -43,10 +43,21 @@ against core. Bug-first per task; coordinate version bumps.
   Bug-first: symmetry guard shown failing on an emptied python probe set, then restored.
   `test/toolchainDetection.test.ts` (9). Build clean, 139/139 green. **Adoption (client work,
   after core):** VS Code `environment.ts` toolchain half → core, Desktop drops `dotnetInfo.ts`.
-- [ ] **DEP-1 — deployUnit orchestration (controller only — the pieces all exist).** The sequence
-  "resolve the classes a test needs → emit/write all artifacts → build-validate → run → report"
-  from Desktop `deployUnit.ts`/`deployLibraries.ts`, parameterised by emitter + layout. Consumers:
-  VS Code SP2-1, Desktop drops its copy.
+- [x] **DEP-1 — deployUnit orchestration. DONE 2026-07-17 (branch `develop`).** New
+  `services/deployUnit.ts`: `deployUnit(cases, { root, emitter, resolveClass, apiMethods,
+  dataMethods, clean })` — collision guard (before any write) → clean (sandbox only) → shared
+  libraries via the emitter → each test + its referenced classes → `{ files, notGenerated,
+  deployedClasses }`. Language-symmetric: `CodeEmitter` grew the **naming contract**
+  (`testFileName`/`classFileName`/`libraryFileNames`) — TS emits `X.test.ts` (Vitest discovery)
+  + `apiMethods.ts`/`dataGenerator.ts` (the exact names TS-C6 imports resolve); C# keeps
+  `XTests.cs`/`ApiMethods.cs`/`DataGenerator.cs`. Client boundaries per ORCH: generated-class
+  store via `resolveClass` callback, library method lists passed in. Also lifted:
+  `safeFileName` (traversal guard), `safeArtifactName`, `projectDirOf`, `cleanGeneratedArtifacts`,
+  and `buildDeployedUnit(language, path)` (`dotnet build` / `tsc --noEmit`; python with PY-1).
+  Bug-first: TS naming guard shown failing on a C#-style `XTests.ts` variant (Vitest would
+  discover nothing). `test/deployUnit.test.ts` (14). Build clean, 153/153 green. **Adoption:**
+  VS Code SP2-1; Desktop drops `deployUnit.ts`/`deployLibraries.ts` + most of `deploy.ts` —
+  task recorded in `../api2test/docs/TASKS.md` (2026-07-17).
 - [ ] **SBX-1 — managed local sandbox.** Scaffold + maintain a runnable test project (C# csproj /
   TS package.json+tsconfig) for local Execute — from Desktop `sandboxProject.ts` + the NF-2 vitest
   scaffold. In VS Code this is invisible plumbing (deploy model v2: local runs never touch the

@@ -15,6 +15,10 @@ import { E2EPage, E2ETestCaseRow, E2EGenContext } from '../models/E2EDto';
 export class CSharpEmitter implements CodeEmitter {
     readonly language: TargetLanguage = 'csharp';
     readonly fileExtension = 'cs';
+    readonly libraryFileNames = { apiMethods: 'ApiMethods.cs', dataLibrary: 'DataGenerator.cs' };
+
+    testFileName(baseName: string): string { return `${baseName}Tests.cs`; }
+    classFileName(baseName: string): string { return `${baseName}.cs`; }
 
     private classGen: ClassGenerationService;
     private testGen: TestGenerationService;
