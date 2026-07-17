@@ -111,8 +111,18 @@ against core. Bug-first per task; coordinate version bumps.
   Execution (rows matched by `methodNameOf`; an unmatched row kept verbatim — never silently
   dropped, guard shown failing on a filtering variant). `test/ciIngestion.test.ts` (7). Build
   clean, 188/188 green. Desktop `ciResults.ts` becomes a thin route over these (DA-8).
-- [ ] **APP-1 — applicationId-scoped base-path/token resolution.** The per-app URL/token rule is
-  enterprise-client-only today; lift it so VS Code SP3-1 is a thin port.
+- [x] **APP-1 — applicationId-scoped base-path/token resolution. DONE 2026-07-17 (branch
+  `develop`).** New `services/methodScope.ts`: `methodForApp` (in scope = GLOBAL (no
+  `applicationId`) or id matches; no app selected → only globals — the enterprise rule),
+  `methodsByCategory` (case-insensitive), `basePathOptions`/`tokenOptions`, and the canonical
+  `API_METHOD_CATEGORY` taxonomy lifted from the enterprise client. **Found + fixed real TS
+  seed drift** (caught by the new guards): the four per-app token/base-path methods had NO
+  `applicationId` link, and categories were off-taxonomy (`Response Handling`/`Validators`/
+  `Configuration` → `Response`/`Serialization`/`Base Path`); C#+Python seeds were correct.
+  Guards: seed round-trip per language (petstore token resolves only for app-petstore) +
+  no-orphaned-category — both shown failing on the real drifted seed, green after the fix.
+  `test/methodScope.test.ts` (5). Build clean, 193/193 green. VS Code SP3-1 + Desktop
+  (drop `constants/values.ts` taxonomy + the TestCasesPage local rule) are thin ports.
 - [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do
   after the TS extension path proves out.
 

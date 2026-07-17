@@ -72,6 +72,11 @@ export type { DeployTestSetOptions, DeployTestSetResult } from './services/deplo
 export { isValidIngestionKey, attributeRelease, parseCiReport, buildCiExecution } from './services/ciIngestion';
 export type { IngestionTokenLike, ReleaseWindow, CiCaseRef, CiResultsMeta, CiExecResult, CiExecution } from './services/ciIngestion';
 
+// Application-scoped method resolution (APP-1) — per-app base-path/token rule + the canonical
+// method-category taxonomy, shared by every edition.
+export { API_METHOD_CATEGORY, methodForApp, methodsByCategory, basePathOptions, tokenOptions } from './services/methodScope';
+export type { ApiMethodCategory, AppScopedMethod } from './services/methodScope';
+
 // Managed local sandbox (SBX-1) — scaffold + maintain the runnable test project local Execute
 // deploys into (deploy model v2: never the user's workspace). Detect, never install.
 export { ensureSandbox, SANDBOX_SCAFFOLDERS } from './services/sandboxProject';
