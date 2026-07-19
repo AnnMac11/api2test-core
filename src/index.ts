@@ -28,7 +28,10 @@ export { DataLibraryService } from './services/DataLibraryService';
 export { DictionaryImportService } from './services/DictionaryImportService';
 export type { DictionaryImportResult, BatchImportResult, BatchImportItem } from './services/DictionaryImportService';
 export { generateClassLibrary, toClassGenerationRequest } from './services/batchClassGeneration';
-export type { ClassStatus, ClassGenerationOutcome, BatchGenerateResult } from './services/batchClassGeneration';
+export type { ClassGenerationState, ClassGenerationOutcome, BatchGenerateResult } from './services/batchClassGeneration';
+// Class status model (CLS): the user RAG `RagStatus` (models) + the roll-up / result rule. Colours stay
+// client-side (theme tokens). `rollupRag` drives the E2E/test-case impact cascade shared by both editions.
+export { rollupRag, resultToRag } from './services/classStatus';
 export { ClassGenerationService } from './services/ClassGenerationService';
 export { buildClassName } from './services/classNaming';
 export { hasUnassignedMandatory, isMandatoryField, isDataMethodUnassigned } from './services/fieldCompleteness';
@@ -98,8 +101,11 @@ export { generateTestForRow, methodName as e2eMethodName } from './services/E2ET
 export {
   paramsOf, placeholdersOf, takesUrlTemplate, takesFieldPath,
   isConsumedClass, sourceEndpointKey, availableVarsBefore, validateSteps,
+  isSendMethod, friendlyMethodName, groupIntoCalls, stepIncomplete,
 } from './services/e2eCaseLogic';
-export type { MethodParamMap, PickerLike } from './services/e2eCaseLogic';
+export type { MethodParamMap, PickerLike, CallGroup } from './services/e2eCaseLogic';
+// Response-example flattener (E2E-RESP core half) — dotted field paths for the builder's field dropdown.
+export { responseFields } from './services/responseFields';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
 export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
 export type { RawTestResult, BuildResult, ApiCall, VitestRun } from './services/TestRunnerService';

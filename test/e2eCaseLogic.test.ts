@@ -8,6 +8,7 @@ import assert from 'node:assert';
 import {
   paramsOf, placeholdersOf, takesUrlTemplate, takesFieldPath,
   isConsumedClass, sourceEndpointKey, availableVarsBefore, validateSteps,
+  isSendMethod, friendlyMethodName, groupIntoCalls, stepIncomplete,
   type MethodParamMap, type PickerLike,
 } from '../src/services/e2eCaseLogic';
 import type { E2ECaseItem } from '../src/models/E2EDto';
@@ -84,7 +85,12 @@ test('validateSteps: a missing required arg fails', () => {
 });
 
 test('validateSteps: an extract step without assignTo fails', () => {
-  const items = [C('GetCustomer'), M('ExtractFieldFromResponse', { args: { fieldPath: { value: 'id' } } })];
+  // Bind the class {id} so the class step is valid and validation reaches the extract step (the
+  // class-first rule now fails an unbound-placeholder class first — see the standalone-class test).
+  const items = [
+    C('GetCustomer', { args: { id: { value: 'cus_1' } } }),
+    M('ExtractFieldFromResponse', { args: { fieldPath: { value: 'id' } } }),
+  ];
   assert.match(validateSteps(items, methodParams, classItems)!, /needs a variable name/);
 });
 
@@ -94,4 +100,53 @@ test('validateSteps: duplicate assigned variable names fail', () => {
     M('PlainMethod', { assignTo: 'x', args: { name: { value: 'b' } } }),
   ];
   assert.match(validateSteps(items, methodParams, classItems)!, /assigned more than once/);
+});
+
+// --- E2E-GROUP-1: class-first grouping lifted from Desktop (2026-07-19) ---
+
+test('isSendMethod: true only for url/urlTemplate-taking wrappers', () => {
+  assert.equal(isSendMethod(methodParams, 'PostJsonAsync'), true);
+  assert.equal(isSendMethod(methodParams, 'GetByIdAsync'), true);
+  assert.equal(isSendMethod(methodParams, 'ExtractFieldFromResponse'), false);
+  assert.equal(isSendMethod(methodParams, 'PlainMethod'), false);
+});
+
+test('friendlyMethodName: maps known labels, strips suffixes otherwise', () => {
+  assert.equal(friendlyMethodName('ExtractFieldFromResponse'), 'ExtractField');
+  assert.equal(friendlyMethodName('ValidateBadRequestResponseAsync'), 'Validate 400');
+  assert.equal(friendlyMethodName('SomethingCustomAsync'), 'SomethingCustom');
+});
+
+test('groupIntoCalls: send row + class-led row, each with attached follow-ups', () => {
+  // send → class → extract | class(-led) → plain-method(follow)
+  const items = [
+    M('PostJsonAsync'), C('StripeCustomer'), M('ExtractFieldFromResponse'),
+    C('GetCustomer'), M('PlainMethod'),
+  ];
+  assert.deepEqual(groupIntoCalls(items, methodParams), [
+    { sendIdx: 0, classIdx: 1, followIdxs: [2], allIdxs: [0, 1, 2] },
+    { sendIdx: null, classIdx: 3, followIdxs: [4], allIdxs: [3, 4] },
+  ]);
+});
+
+test('groupIntoCalls: a lone non-send method is its own orphan row', () => {
+  assert.deepEqual(groupIntoCalls([M('ExtractFieldFromResponse')], methodParams), [
+    { sendIdx: null, classIdx: null, followIdxs: [0], allIdxs: [0] },
+  ]);
+});
+
+test('stepIncomplete: class with an unbound {placeholder} is incomplete until set', () => {
+  assert.equal(stepIncomplete([C('GetCustomer')], methodParams, classItems, 0), true);
+  const bound = [C('GetCustomer', { args: { id: { value: 'cus_1' } } })];
+  assert.equal(stepIncomplete(bound, methodParams, classItems, 0), false);
+});
+
+// Reconciled drift (E2E-GROUP-1): the class IS the call, so a class with a {placeholder} always
+// needs it bound — NOT only when a send method sits above it (core's old `isConsumedClass` gate).
+// FAILS on the pre-lift code (a standalone class returned null / passed).
+test('validateSteps: standalone class with an unbound {placeholder} fails (class-first)', () => {
+  assert.match(
+    validateSteps([C('GetCustomer')], methodParams, classItems)!,
+    /needs a value for the URL placeholder \{id\}/,
+  );
 });

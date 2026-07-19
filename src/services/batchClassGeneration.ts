@@ -10,16 +10,20 @@ import { hasUnassignedMandatory } from './fieldCompleteness';
  * generation or the status rule; it sequences them so both editions share one loop.
  */
 
-/** Per-class status — the Class Library's green/amber/red (+ empty for a body-less class). */
-export type ClassStatus = 'generated' | 'pending' | 'error' | 'empty';
+/**
+ * How the *tool* generated the class — a transient, machine-derived state (NOT the user's RAG
+ * {@link RagStatus}). Renamed from `ClassStatus` (CLS-1) to free that name for the persisted user
+ * field; the two used to collide across editions. `generated`=code produced, `pending`=a mandatory
+ * field is unassigned, `error`=render threw, `empty`=nothing to serialise (no body fields).
+ */
+export type ClassGenerationState = 'generated' | 'pending' | 'error' | 'empty';
 
 /** Outcome for one class in a batch generate. */
 export interface ClassGenerationOutcome {
   endpointId: string;
   className: string;
-  /** `generated` = green (code produced); `pending` = amber (a mandatory field is unassigned);
-   *  `error` = red (render threw); `empty` = nothing to serialise (no body fields). */
-  status: ClassStatus;
+  /** The transient generation state (see {@link ClassGenerationState}). Not the user RAG `status`. */
+  state: ClassGenerationState;
   /** The rendered class source — present only when `status === 'generated'`. Persistence is the client's job. */
   code?: string;
   /** Present only when `status === 'error'`. */
@@ -63,21 +67,21 @@ export function generateClassLibrary(entries: ApiClassLibraryDto[], emitter: Cod
   const perClass: ClassGenerationOutcome[] = (entries || []).map(entry => {
     const base = { endpointId: entry.endpointId, className: entry.className };
     if (hasUnassignedMandatory(entry.fields)) {
-      return { ...base, status: 'pending' as const };
+      return { ...base, state: 'pending' as const };
     }
     try {
       const code = emitter.emitRequestClass(toClassGenerationRequest(entry));
       return code == null
-        ? { ...base, status: 'empty' as const }
-        : { ...base, status: 'generated' as const, code };
+        ? { ...base, state: 'empty' as const }
+        : { ...base, state: 'generated' as const, code };
     } catch (e) {
-      return { ...base, status: 'error' as const, error: e instanceof Error ? e.message : String(e) };
+      return { ...base, state: 'error' as const, error: e instanceof Error ? e.message : String(e) };
     }
   });
   return {
     perClass,
-    generated: perClass.filter(c => c.status === 'generated').length,
-    pending: perClass.filter(c => c.status === 'pending').length,
-    errored: perClass.filter(c => c.status === 'error').length,
+    generated: perClass.filter(c => c.state === 'generated').length,
+    pending: perClass.filter(c => c.state === 'pending').length,
+    errored: perClass.filter(c => c.state === 'error').length,
   };
 }

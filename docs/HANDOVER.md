@@ -35,7 +35,85 @@ note the coordinated version bump on anything that ships.
   wired in `data/defaultLibraries.ts` (`getDefaultDataLibrary` / `getDefaultApiMethodLibrary` / `mergeDefaults`).
 - **Build/test:** `npm run build` (tsc), `npm test` (node:test over `test/*.test.ts`).
 
+## Two class statuses (read before touching anything "status")
+
+There are **two different, independent things** in the Class Library that both got called "status" —
+this collision has confused multiple threads and is exactly what the CLS series (TASKS.md) untangles.
+Keep them apart:
+
+| | **ClassGenerationState** | **ClassStatus** (user RAG) |
+|---|---|---|
+| **What it means** | *How the **tool** generated the class* | *Real-world status of the **endpoint**, outside the tool* |
+| **Who sets it** | The tool (machine-derived) | The user (manual) |
+| **Values** | `generated` / `pending` / `error` / `empty` | `green` / `amber` / `red` / `grey` |
+| **Meaning** | code produced / mandatory field unassigned / render threw / no body | automated & working / in progress or under maintenance / **API has a defect, not working** / not automated |
+| **Where** | Rule is IN core (`batchClassGeneration.ts`, transient); persist only `generationError` | **Not in core yet** (CLS-2 adds `status` to `ApiClassLibraryDto`) |
+
+Two consequences that trip people up:
+
+- **The two reds are different.** ClassStatus `red` = *the API itself is broken* (user's judgement).
+  ClassGenerationState `error` = *the tool failed to generate the class*. Desktop currently conflates
+  them (a generate failure writes `status: 'red'` onto the user's RAG) — that's the CLS-2 bug fix. The
+  tool must never write ClassStatus.
+- **Name collision spans repos.** Core's transient type is *itself* called `ClassStatus`
+  (`generated|pending|error|empty`); Desktop's user RAG is also `ClassStatus` (`red|grey|amber|green`).
+  CLS-1 renames core's to `ClassGenerationState` so the persisted user field can own `ClassStatus`.
+
+**Impact cascade** (the "which tests can run" / "impact of an API change" feature): a test case's status
+is a **rollup** of the ClassStatus of the classes it uses — any red→red; else all green→green; else all
+grey→grey; else amber. So an all-green test case is runnable; flip one class to red/amber (its API broke
+or is under maintenance) and every test using it cascades. This rule is Desktop-only today
+(`statusColours.ts`); CLS-3 lifts it here.
+
 ## State of play (update each session)
+
+**As of 2026-07-19 (E2E-GROUP-1 + E2E-RESP-1 + CLS-1/2/3 landed, branch `develop`, uncommitted→committing):**
+
+- **Three VS-Code-blocking lifts done, bug-first, 211/211 green:**
+  - **E2E-GROUP-1** — class-first grouping (`groupIntoCalls`/`isSendMethod`/`stepIncomplete`/
+    `friendlyMethodName` + `CallGroup`) ported into `services/e2eCaseLogic.ts`; `validateSteps`
+    reconciled to Desktop's class-first rule (a class with a URL `{placeholder}` always needs it bound).
+  - **E2E-RESP-1** — `services/responseFields.ts` (`responseFields(example)` → dotted field paths).
+  - **CLS-1/2/3** — user RAG `RagStatus` (`models/classStatus.ts`) + `rollupRag`/`resultToRag`
+    (`services/classStatus.ts`); `ApiClassLibraryDto` gained `status`/`generationError`; the transient
+    generation type/field renamed apart (`ClassStatus`→`ClassGenerationState`, outcome `.status`→`.state`).
+- **Client adoption filed:** VS Code SP3-1b / E2E-RESP / CLS-2/3 unblocked; Desktop DA-10 / DA-11 /
+  DA-12(CLS-4). The `.status`→`.state` outcome rename affects `batchGenerate.ts` /
+  `useBatchClassGeneration` on adoption. Details in TASKS.md.
+
+**As of 2026-07-17 (latest+ — VS Code Test Cases → E2E model, more core drift found):**
+
+- **VS Code is unifying its Test Cases page onto Desktop's `TestCase { items[] }` model** (their
+  "path A", incremental — uses core's existing `generateTestForRow` + `e2eCaseLogic` subset; no core
+  change needed for A). Two core items filed from it:
+  - **E2E-GROUP-1** — core's `services/e2eCaseLogic.ts` is a **subset** of Desktop's local copy; the
+    class-first grouping (`groupIntoCalls`/`isSendMethod`/`stepIncomplete`/`friendlyMethodName`) is
+    Desktop-only. Lifting it unblocks VS Code's **rich In/Out builder** (their path B / SP3-1b).
+    Corrects a wrong VS Code note that claimed core already had these.
+  - **E2E-MODEL-1** (optional) — no unified `TestCase` wrapper/store in core; VS Code owns its own for
+    now. Filed so the duplication is visible; lift if a second edition needs it.
+
+**As of 2026-07-17 (latest — VS Code Test Cases parity review, new core gaps found):**
+
+- **Reviewing the VS Code Test Cases page against Desktop surfaced core work still needed.**
+  Desktop's page is a builder-authored, multi-step surface with in-app **Execute** (result + API
+  call chain + report) and a RAG-tinted list; VS Code's is the older single-test model. Mapping the
+  Desktop deps against core:
+  - **Generation = fully in core** — `generateTestForRow` (the exact multi-step generator) +
+    `e2eCaseLogic`, both languages. Execution **primitives** all in core too (`ensureSandbox`,
+    `deployUnit`, runner, `parseTrx`/`parseVitestJson`, `parseApiCalls`).
+  - **Gaps found (now filed):** the `ExecResult`/`Execution` result types are Desktop-only → **EXEC-1
+    (revised)**; the branded run-report HTML builder is Desktop-only → **EXEC-2**. The list's RAG tint
+    is the already-parked **CLS series** (CLS-1..3).
+  - **⚠ Edition boundary (user, 2026-07-17):** the execution *environment* differs per edition — VS Code
+    runs in the user's own project via Test Explorer (no sandbox), Desktop in a managed sandbox + CI,
+    Jira not at all. So **run orchestration stays edition-side**; core provides only the **primitives**
+    (`runDotnetTest`/`runVitest`/`parseTrx`/`parseApiCalls` + `deployUnit` to a root) and the shared
+    **result types** (EXEC-1 revised — no `runTestCase` orchestrator in core). Same principle keeps the
+    app→folder/path **segment policy out of core** (VS Code passes core its own canonical segment;
+    `nsSegment` is idempotent, so no core change) — each of the 3 editions owns its own layout + runtime.
+  - **Sequencing:** CLS (class-status model) is **on hold, core-first**; EXEC-1/2 are the new
+    foundation for VS Code's Test Cases Execute. Client build-out waits on these + LIC-5 adoption.
 
 **As of 2026-07-17 (later session — parity lifts):**
 

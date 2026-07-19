@@ -41,7 +41,7 @@ const boom = entry({ className: 'Boom', fields: [{ fieldName: 'x', fieldType: 's
 test('a ready class is generated (code returned) and the emitter is called', () => {
   const em = fakeEmitter();
   const r = generateClassLibrary([ready], em);
-  assert.equal(r.perClass[0].status, 'generated');
+  assert.equal(r.perClass[0].state, 'generated');
   assert.equal(r.perClass[0].code, '// class Ready');
   assert.deepEqual(em.calls, ['Ready']);
 });
@@ -49,7 +49,7 @@ test('a ready class is generated (code returned) and the emitter is called', () 
 test('an unassigned-mandatory class is PENDING — the emitter is never called', () => {
   const em = fakeEmitter();
   const r = generateClassLibrary([pending], em);
-  assert.equal(r.perClass[0].status, 'pending');
+  assert.equal(r.perClass[0].state, 'pending');
   assert.equal(r.perClass[0].code, undefined);
   assert.deepEqual(em.calls, [], 'no render attempted for a pending class');
 });
@@ -58,10 +58,23 @@ test('a render error is captured per class and does not abort the batch', () => 
   const em = fakeEmitter();
   const r = generateClassLibrary([boom, ready], em);
   const b = r.perClass.find(c => c.className === 'Boom')!;
-  assert.equal(b.status, 'error');
+  assert.equal(b.state, 'error');
   assert.match(b.error!, /blew up/);
   // The batch continued to the next class.
-  assert.equal(r.perClass.find(c => c.className === 'Ready')!.status, 'generated');
+  assert.equal(r.perClass.find(c => c.className === 'Ready')!.state, 'generated');
+});
+
+// CLS-1/CLS-2 separation guard: a generate FAILURE reports on the transient generation `state`, and
+// must NEVER touch the user-owned RAG `status` on the input entry (the Desktop conflation bug). The
+// batch generator returns outcomes; it does not mutate the entry's `status`.
+test('a failed generate leaves the entry\'s user RAG status untouched', () => {
+  const withStatus = entry({
+    className: 'Boom', status: 'green',
+    fields: [{ fieldName: 'x', fieldType: 'string', mandatory: false, dataMethod: 'X' }],
+  });
+  const r = generateClassLibrary([withStatus], fakeEmitter());
+  assert.equal(r.perClass[0].state, 'error');       // machine state records the failure
+  assert.equal((withStatus as any).status, 'green'); // user RAG NOT hijacked to red
 });
 
 test('summary counts generated / pending / errored', () => {

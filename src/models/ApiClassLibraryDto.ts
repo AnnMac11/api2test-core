@@ -1,3 +1,5 @@
+import { RagStatus } from './classStatus';
+
 /**
  * A field entry stored inside an {@link ApiClassLibraryDto}.
  * Mirrors the relevant properties of {@link DataDictionaryField} at the time the class entry was created.
@@ -54,4 +56,16 @@ export interface ApiClassLibraryDto {
     contentType?: string;
     /** ISO 8601 timestamp of creation. */
     createdDate: string;
+    /**
+     * User-set real-world RAG status of the endpoint (grey=not automated, amber=in progress,
+     * green=automated & working, red=API defect). Defaults to `'grey'`. The USER owns this — the
+     * generator must NEVER write it (a generation failure sets {@link generationError}, not `status`).
+     * Distinct from the transient `ClassGenerationState` returned by the batch generator.
+     */
+    status?: RagStatus;
+    /**
+     * Set only when a class generation errored — the one generation-state that can't be re-derived
+     * from code presence + `hasUnassignedMandatory`. Kept apart from the user `status` on purpose.
+     */
+    generationError?: string;
 }

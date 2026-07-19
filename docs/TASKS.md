@@ -126,6 +126,127 @@ against core. Bug-first per task; coordinate version bumps.
 - [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do
   after the TS extension path proves out.
 
+### Class status model (CLS series) — added 2026-07-17
+
+Goal: move BOTH class-status concepts + the impact cascade into core so both editions share one
+model, and **untangle the two things that currently collide under the name "status"** (see the new
+"Two class statuses" chapter in [`HANDOVER.md`](HANDOVER.md) — read it before starting). The concepts:
+
+- **ClassGenerationState — how the *tool* generated the class** (machine-derived, internal). The RULE
+  already lives here: `generateClassLibrary` (`services/batchClassGeneration.ts`) returns per-class
+  `generated | pending | error | empty`. But (a) it is transient — returned, never persisted — and
+  (b) core's type for it is *itself* named `ClassStatus`, colliding with the user RAG below.
+- **ClassStatus — the real-world status of the *endpoint*, outside the tool** (user-set RAG):
+  **grey** = not automated, **amber** = in progress / under maintenance, **green** = automated &
+  working, **red** = the API has a defect / not working. **Not in core at all** — no field, no type.
+- **Impact cascade** — a test case's status = a rollup of the ClassStatus of the classes it uses.
+  **Not in core** — lives only in Desktop `ui-browser/.../shared/utils/statusColours.ts` (~36 lines).
+
+- [x] **CLS-1 — rename core's transient generation status apart from the user RAG. DONE 2026-07-19
+  (branch `develop`, uncommitted).** Renamed the `batchClassGeneration` type `ClassStatus`
+  (`generated|pending|error|empty`) → **`ClassGenerationState`** and re-exported under the new name.
+  **Went one step past a type rename (root-cause fix):** the `ClassGenerationOutcome` FIELD was also
+  named `status` — the shared field *name* is what let Desktop copy a generation outcome into the user
+  RAG. Renamed the outcome field **`status` → `state`**. Core-internal callers updated. **⚠ ORCH caller
+  change:** consumers that read `outcome.status` now read `outcome.state` (VS Code `batchGenerate.ts`,
+  Desktop `useBatchClassGeneration`) — see the adoption notes. Compile-guarded by `tsc` (build clean).
+- [x] **CLS-2 — persist the two fields on `ApiClassLibraryDto`. DONE 2026-07-19.** Added **`status?`**
+  (user RAG `RagStatus` = `'grey'|'amber'|'green'|'red'`, default `'grey'` — new `models/classStatus.ts`)
+  and **`generationError?`** (set only when a generate errored — the one generation-state not re-derivable
+  from code presence + `hasUnassignedMandatory`). Core `generateClassLibrary` returns outcomes and never
+  writes the entry's `status` (the separation is enforced core-side). Bug-first: a guard that a failed
+  generate leaves the entry's user `status` untouched — shown **failing** on an injected red-hijack
+  variant, then green. (The Desktop-side `status: 'pending'` retire + the red-after-regenerate laundering
+  fix are Desktop client work — CLS-4.)
+- [x] **CLS-3 — lift the RAG rollup / colour rule into core. DONE 2026-07-19.** New
+  `services/classStatus.ts`: `rollupRag(statuses[])` (any red→red; else all green→green; else all
+  grey→grey; else amber; empty→grey) + `resultToRag` (pass→green/fail→red/skip→amber/else grey), both
+  exported from `index.ts`; `RagStatus` lives in `models/classStatus.ts`. **Colours stay in the clients**
+  (theme tokens) — only the rule is here. Bug-first: `rollupRag` truth table + `resultToRag`
+  (`test/classStatus.test.ts`). **Build clean, 211/211 green.**
+  - **Adoption (client work, after core):** VS Code CLS-2/CLS-3 (Class Library columns + Test Cases/Test
+    Sets rollup; consume `rollupRag`; update `batchGenerate.ts` `outcome.status`→`.state`). Desktop CLS-4
+    (drop the local `statusColours` + `useBatchClassGeneration` `.status`→`.state`; fix the
+    red-after-successful-regenerate bug where `status` laundering only handled `'pending'`→`'grey'`).
+    Both tracked in their repos.
+
+### Local execution orchestration (EXEC series) — added 2026-07-17
+
+Goal: give both editions **one core path to run a test case locally and get a result back**, so the
+VS Code Test Cases page can match Desktop's in-app **Execute** (result + API call chain + report).
+From the 2026-07-17 review of Desktop `TestCasesPage` + `/api/execution/run` against core:
+**generation is fully in core** (`generateTestForRow`, `e2eCaseLogic`, both languages) and so are all
+execution **primitives** (`ensureSandbox`, `deployUnit`, `buildDeployedUnit`,
+`runDotnetTest`/`runVitest`, `parseTrx`/`parseVitestJson`, `parseApiCalls`) — but the **assembly** and
+the **result types** are Desktop-only. Bug-first per task; coordinate the version bump.
+
+- [ ] **EXEC-1 — result types only (REVISED 2026-07-17). ⚠ Orchestration is NOT core.** Original idea
+  was a `runTestCase` orchestrator (`ensureSandbox → deployUnit → run → parse`) in core — **revised
+  after the edition-boundary review (user, 2026-07-17): the execution *environment* differs per edition
+  and must NOT be baked into core.** VS Code runs in the **user's own open project** via Test Explorer /
+  C# Dev Kit (no sandbox); Desktop runs in a **managed sandbox** + `dotnet test` + CI; Jira does **not
+  execute** at all. So a single core orchestrator would impose Desktop's environment on everyone.
+  - **Core lifts ONLY the shared shapes:** `ExecResult` / `Execution` types (status pass/fail/skip,
+    durationMs, message, `calls[]`) from Desktop `execution-suites/types/execution.types.ts`, so the
+    editions agree on the result shape. The run **primitives already in core** stay the shared engine
+    (`runDotnetTest`/`runVitest`/`parseTrx`/`parseVitestJson`/`parseApiCalls` + `deployUnit` to a given
+    root).
+  - **Orchestration stays edition-side:** each edition wires deploy→run→parse for its own environment
+    (VS Code: workspace/project + Test Explorer, which it already does; Desktop: sandbox + CI). VS Code
+    only needs the result types **if/when** it shows results in-app (otherwise it keeps the Test-Explorer
+    hand-off). Bug-first applies where the orchestration lives (in the edition), not here.
+- [ ] **EXEC-2 — branded run-report HTML builder.** Lift Desktop
+  `execution-suites/logic/runReport.ts` (`buildExecutionReportHtml(execution)`) into core (pure, no
+  DOM) so both editions render the same print-to-PDF report from an `Execution`. Colours come from the
+  CLS-3 result→RAG map (sequence after CLS-3, or inline a minimal map and swap later). Bug-first: pin
+  the report contains each row's status + calls for a known Execution.
+
+Note: the RAG rollup / impact-cascade tint on the Test Cases list is **CLS-3** above, not here.
+
+### E2E builder logic lift (E2E-GROUP series) — added 2026-07-17
+
+Goal: core owns ALL the E2E-builder composition logic so both editions share one implementation.
+Found during the VS Code Test Cases parity review: core's `services/e2eCaseLogic.ts` is a **subset** of
+Desktop's local `e2e-test-cases/logic/e2eCaseLogic.ts` — the two have **drifted**. Core has
+`validateSteps`/`paramsOf`/`placeholdersOf`/`availableVarsBefore`/`isConsumedClass`/`sourceEndpointKey`/
+`takesUrlTemplate`/`takesFieldPath`. **Missing from core (Desktop-only):** the class-first "In/Out"
+grouping — `groupIntoCalls`, `isSendMethod`, `stepIncomplete`, `friendlyMethodName`.
+
+- [x] **E2E-GROUP-1 — lift the class-first grouping into core. DONE 2026-07-19 (branch `develop`,
+  uncommitted).** Ported `groupIntoCalls` / `isSendMethod` / `stepIncomplete` / `friendlyMethodName`
+  (+ the `CallGroup` type) from Desktop `e2e-test-cases/logic/e2eCaseLogic.ts` into core
+  `services/e2eCaseLogic.ts`; all re-exported from `index.ts`. **Reconciled the `validateSteps`
+  drift** (user decision 2026-07-19: if it can live in core it should, VS Code consumes it): adopted
+  Desktop's class-first rule — a class with a URL `{placeholder}` **always** needs it bound (was:
+  only when a send method sat above it via `isConsumedClass`), wording "needs a **value** for the URL
+  placeholder". Bug-first: `groupIntoCalls` truth-table (send-row + class-led row + orphan) + a
+  `validateSteps` standalone-unbound-class case, both shown failing on the pre-lift source (6 red),
+  then green; one existing fixture (`extract step without assignTo`) legitimately updated to bind its
+  class placeholder. **199/199 green, build clean.**
+  - **Adoption (client work, after core):** Desktop drops its local `e2eCaseLogic.ts` copy and imports
+    from core (filed in `../api2test/docs/TASKS.md` + HANDOVER). VS Code SP3-1b (rich In/Out builder)
+    now unblocked — core exports the grouping.
+  - **⚠ Corrected an earlier wrong note:** VS Code SP3-1b previously claimed "core already exports
+    groupIntoCalls/isSendMethod" — it did not until now.
+- [x] **E2E-RESP-1 — response-example flattener (core half). DONE 2026-07-19 (branch `develop`,
+  uncommitted).** New `services/responseFields.ts`: `responseFields(example) → string[]` — flattens a
+  response example into dotted field paths (`id`, `address.city`) so the E2E builder can OFFER response
+  fields in a dropdown instead of a raw text box ("make API response data accessible"). Ported from
+  Desktop's Next route `api/e2e/response-fields` (the pure `flatten`), edition-neutral, behaviour
+  identical: objects up to 2 levels deep, arrays never descended, deduped; added tolerant input
+  (accepts a parsed object OR a JSON string; `[]` on primitive/array/invalid — never throws). Exported
+  from `index.ts`. The store lookup / spec re-parse / HTTP stay in the clients. Bug-first: written
+  test-first (6 cases: nesting, depth cap, arrays-not-descended, top-level array/primitive, JSON-string
+  input, dedup) — shown failing (module absent), then green. **205/205 green, build clean.**
+  - **Adoption (clients):** VS Code E2E-RESP (flatten the endpoint's stored `responseExamples` into the
+    capture/param dropdown). Desktop DA-11 — the route drops its local `flatten`, calls core.
+- [ ] **E2E-MODEL-1 (optional, later) — unified TestCase model + store rule.** Core has the E2E
+  building blocks (`E2ECaseItem`, `generateTestForRow`) but **no unified `TestCase { items[], header,
+  status }` wrapper or store rule** — Desktop keeps it in the client, and VS Code is adding its own for
+  path A (E2E-A1). If a second edition needs it, lift the wrapper type + Steps/Generated derivation
+  here (parameterised by `StorageProvider`), same pattern as the ORCH/LIC lifts. Not blocking anything
+  today — filed so the duplication is visible.
+
 ### Licensing restructure (LIC series) — added 2026-07-17
 
 Goal: **core owns all licence logic** (verify + trial clock + access rule); apps keep only token

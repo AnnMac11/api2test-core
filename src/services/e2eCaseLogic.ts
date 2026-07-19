@@ -85,6 +85,115 @@ export function availableVarsBefore(items: E2ECaseItem[], idx: number): string[]
   return [...new Set(vars.filter(Boolean))];
 }
 
+/** Is this Method a "send" — an HTTP wrapper that takes a `url`/`urlTemplate` param (starts a call-row)? */
+export function isSendMethod(methodParams: MethodParamMap, ref: string): boolean {
+  return paramsOf(methodParams, ref).some(p => p.toLowerCase().includes('url'));
+}
+
+/** Friendly, plain display labels for the library methods (display ONLY — the underlying method name that
+ *  drives code generation is unchanged). Keeps the builder readable: "ExtractField", "Validate 400", … */
+const METHOD_LABELS: Record<string, string> = {
+  ExtractFieldFromResponse: 'ExtractField',
+  ExtractTokenFromResponse: 'ExtractToken',
+  ValidateResponseAsync: 'Validate 200/201',
+  ValidateDeleteResponseAsync: 'Validate 200/204',
+  ValidateBadRequestResponseAsync: 'Validate 400',
+  ValidateUnauthorizedResponseAsync: 'Validate 401',
+  ValidateForbiddenResponseAsync: 'Validate 403',
+  ValidateNotFoundResponseAsync: 'Validate 404',
+  ValidateConflictResponseAsync: 'Validate 409',
+  ValidateValidationErrorResponseAsync: 'Validate 422',
+};
+export function friendlyMethodName(ref: string): string {
+  if (METHOD_LABELS[ref]) return METHOD_LABELS[ref];
+  // Fallback for un-mapped methods: drop the noisy suffixes (…FromResponse / …ResponseAsync / …Async).
+  return (ref || '').replace(/FromResponse$/, '').replace(/ResponseAsync$/, '').replace(/Async$/, '') || ref;
+}
+
+/** One call-row (#58): a send method + the class it sends (directly below) + follow-up extract/validate
+ *  methods. Indices point into the flat `items` list; the layout groups them, the data model is unchanged. */
+export interface CallGroup {
+  /** item index of the send method, or null for an orphan class/method with no send above it. */
+  sendIdx: number | null;
+  /** item index of the class the send method sends, or null. */
+  classIdx: number | null;
+  /** item indices of the follow-up (extract/validate) methods attached to this call. */
+  followIdxs: number[];
+  /** every item index in this row, in order (send, class, follow-ups) — for move/remove. */
+  allIdxs: number[];
+}
+
+/**
+ * Group the flat steps into call-rows: each **send** method starts a row; the class directly below it and
+ * any following non-send (extract/validate) methods attach to that row, until the next send method. A class
+ * or method with no send above it becomes its own (orphan) row. Pure — unit-tested.
+ */
+export function groupIntoCalls(items: E2ECaseItem[], methodParams: MethodParamMap): CallGroup[] {
+  const groups: CallGroup[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const it = items[i];
+    if (it.type === 'Method' && isSendMethod(methodParams, it.ref)) {
+      const g: CallGroup = { sendIdx: i, classIdx: null, followIdxs: [], allIdxs: [i] };
+      let j = i + 1;
+      if (items[j]?.type === 'Class') { g.classIdx = j; g.allIdxs.push(j); j++; }
+      while (j < items.length && items[j].type === 'Method' && !isSendMethod(methodParams, items[j].ref)) {
+        g.followIdxs.push(j); g.allIdxs.push(j); j++;
+      }
+      groups.push(g);
+      i = j;
+    } else if (it.type === 'Class') {
+      // Class-led row (the In/Out model): the class IS the call; following non-send methods (extract /
+      // validate = Out params) attach to it, until the next class or send.
+      const g: CallGroup = { sendIdx: null, classIdx: i, followIdxs: [], allIdxs: [i] };
+      let j = i + 1;
+      while (j < items.length && items[j].type === 'Method' && !isSendMethod(methodParams, items[j].ref)) {
+        g.followIdxs.push(j); g.allIdxs.push(j); j++;
+      }
+      groups.push(g);
+      i = j;
+    } else {
+      // Orphan method with no class/send above it — its own row.
+      groups.push({ sendIdx: null, classIdx: null, followIdxs: [i], allIdxs: [i] });
+      i++;
+    }
+  }
+  return groups;
+}
+
+/**
+ * Does this step have an unset REQUIRED input? Drives auto-expanding a call-row and badging it "needs
+ * input" so a required field (e.g. an extract's `fieldPath`, an unfilled class `{placeholder}`) is never
+ * hidden behind the chevron. Mirrors the per-step checks in {@link validateSteps}.
+ */
+export function stepIncomplete(
+  items: E2ECaseItem[],
+  methodParams: MethodParamMap,
+  classItems: PickerLike[],
+  idx: number,
+): boolean {
+  const it = items[idx];
+  if (!it) return false;
+  if (it.type === 'Class') {
+    // A class with URL {placeholders} always needs them bound — the class is the call (In/Out model),
+    // whether or not a legacy send method sits above it.
+    for (const name of placeholdersOf(classItems, it.ref)) {
+      if (!it.args?.[name]?.value?.trim()) return true;
+    }
+    return false;
+  }
+  const params = paramsOf(methodParams, it.ref);
+  const skipValue = takesUrlTemplate(methodParams, it.ref);
+  for (const p of params) {
+    const lp = p.toLowerCase();
+    if (lp.includes('token') || lp.includes('url') || lp.includes('body') || lp === 'response') continue;
+    if (skipValue && lp === 'value') continue;
+    if (!it.args?.[p]?.value?.trim()) return true;
+  }
+  if (takesFieldPath(methodParams, it.ref) && !it.assignTo?.trim()) return true;
+  return false;
+}
+
 /**
  * Validate the ordered steps of a test case. Returns the first error message (matching the
  * dialog's inline copy) or null when the steps are valid. Header/name checks stay in the dialog.
@@ -97,12 +206,11 @@ export function validateSteps(
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     if (it.type === 'Class') {
-      // A consumed class with {placeholders} must map each one to a captured variable.
-      if (isConsumedClass(items, methodParams, i)) {
-        for (const name of placeholdersOf(classItems, it.ref)) {
-          if (!it.args?.[name]?.value?.trim()) {
-            return `Step ${i + 1} (${it.ref}) needs a variable for the URL placeholder {${name}}.`;
-          }
+      // A class with {placeholders} must bind each one (to a variable or literal) — the class is the
+      // call (In/Out model), whether or not a legacy send method sits above it.
+      for (const name of placeholdersOf(classItems, it.ref)) {
+        if (!it.args?.[name]?.value?.trim()) {
+          return `Step ${i + 1} (${it.ref}) needs a value for the URL placeholder {${name}}.`;
         }
       }
       continue;
