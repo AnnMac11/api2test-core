@@ -107,6 +107,7 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
 
   if (httpMethod === 'GET') {
     lines.push(`        var ${respVar} = await GetAsync<object>(token, url${n});`);
+    state.lastResponse = respVar; // a GET response is capturable too (E2E-CAP-GET)
   } else if (httpMethod === 'DELETE') {
     lines.push(`        var ${respVar} = await DeleteAsync(token, url${n});`);
     state.lastResponse = respVar;

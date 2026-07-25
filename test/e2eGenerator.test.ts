@@ -76,6 +76,29 @@ test('class-first row (no send-method) emits each class call and binds URL place
   assert.equal(/var url\d+ = [^;]*\{/.test(code), false, 'no URL line leaves a placeholder unbound');
 });
 
+test('a capture after a GET reads the GET response (E2E-CAP-GET)', () => {
+  // "GET a resource, capture a field from it, use that in the next call" is an ordinary chain. The
+  // GET branch of classStep used to leave `state.lastResponse` unset, so the extract step emitted
+  // `ExtractFieldFromResponse(/* response */, "id")` — code that doesn't compile.
+  const getClasses = [
+    { className: 'PetStoreGetPetByPetId', endpoint: '/pet/{petId} (GET)', method: 'GET' },
+    { className: 'PetStoreDeletePetByPetId', endpoint: '/pet/{petId} (DELETE)', method: 'DELETE' },
+  ];
+  const row: E2ETestCaseRow = {
+    id: 'r', name: 'Read then delete pet', items: [
+      { type: 'Class', ref: 'PetStoreGetPetByPetId', args: { petId: { value: '1' } } },
+      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'capturedId' },
+      { type: 'Class', ref: 'PetStoreDeletePetByPetId', args: { petId: { value: 'capturedId', isVariable: true } } },
+    ],
+  };
+  const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, { methods, classes: getClasses });
+
+  assert.match(code, /var response1 = await GetAsync<object>\(token, url1\);/);
+  assert.match(code, /var capturedId = await ExtractFieldFromResponse\(response1, "id"\);/,
+    'the extract must read the GET response');
+  assert.equal(/\/\* response \*\//.test(code), false, 'no unwired response placeholder anywhere');
+});
+
 test('Option 1: a captured value feeding a TYPED field is extracted in that native type (no conversion)', () => {
   // POST pet → extract id → POST order with { PetId = <captured id> }. The order's PetId is a decimal, so the
   // capture must be `ExtractField<decimal>` (native), NOT the string extractor + a string→number cast.
