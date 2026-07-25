@@ -11,13 +11,19 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
-- [ ] **Merge the 4 open Dependabot npm PRs** (added 2026-07-13) — merge one at a time, each verified
-  with `npm run build && npm test` in core before the next; the two majors can genuinely break the build:
-  - **PR #9 — TypeScript 5.9.3 → 7.0.2** (two-major compiler jump; expect new strictness errors).
-  - **PR #10 — @types/node 20 → 26** (types for a much newer Node than the `'20'` CI builds on —
-    consider together with a decision on bumping the build Node version).
-  - PR #8 — tsx 4.22.4 → 4.23.0 (low risk).
-  - PR #6 — rimraf 5.0.10 → 6.1.3 (low risk).
+- [x] **Dependabot npm PRs — DONE 2026-07-25 (applied on `develop`, verified one at a time).** All green,
+  build clean + `npm test` 215/215 after each. Commits `e4fa193` (low-risk trio + CI Node) and `e7b1b39`
+  (TS 7). GitHub PRs #6/#9/#10/#11/#12 target `main` and are **superseded** — close them (or let the
+  `develop`→`main` merge close them); nothing left to merge from them.
+  - **TypeScript 5.9 → 7.0.2** (#9): the native TS 7 compiler broke the build (28 errors) — root cause was
+    TS 7 not auto-scanning `node_modules/@types`; fixed at root with `types: ["node"]` in `tsconfig.json`
+    (no-op under TS 5, `@types/node` is the only `@types` dep). Not a workaround.
+  - **@types/node 20 → 24** (NOT Dependabot's 26): types track the runtime, not run ahead of it. Pinned to
+    `^24` to **match** the CI Node bump. 26 is ahead of every released LTS (would compile against
+    non-existent APIs).
+  - **CI Node 20 → 24 + `actions/setup-node@v6→v7`** (#11): Node 20 is EOL (~April 2026); moved
+    `ci.yml` to the active LTS (24). This was the "decide the build Node version" open question — resolved.
+  - **tsx 4.19 → 4.23.1** (#12) and **rimraf 5 → 6.1.3** (#6): low-risk, clean.
 - [x] **#52 — integer ids typed as `decimal`. DONE 2026-07-25 (guard added; already functionally fixed).**
   The code was already correct at both hops — `DataDictionaryService.mapTypeToFieldType`/`getFieldType`
   keep `integer` distinct from `number`, and `ClassGenerationService.getCSharpType` maps `integer`→`int`,
