@@ -198,7 +198,14 @@ model, and **untangle the two things that currently collide under the name "stat
     (drop the local `statusColours` + `useBatchClassGeneration` `.status`→`.state`; fix the
     red-after-successful-regenerate bug where `status` laundering only handled `'pending'`→`'grey'`).
     Both tracked in their repos.
-- [ ] **CLS-5 — re-export `RagStatus` from the core `index`. Filed 2026-07-19 (from VS Code CLS-2 adoption).**
+- [x] **CLS-5 — re-export `RagStatus` from the core `index`. ALREADY SATISFIED — verified 2026-07-25.**
+  The premise is stale: `RagStatus` **is** reachable from the package index today, via
+  `index.ts` `export * from './models'` → `models/index.ts` `export * from './classStatus'` (the barrel
+  added with CLS-2). Verified with a `tsc --noEmit` consumer: `import type { RagStatus } from
+  'api2test-core'` compiles with **no** explicit re-export line. So the VS Code `ApiClassLibraryDto['status']`
+  workaround was unnecessary — both editions can `import { RagStatus }` from the index now. Adding an
+  explicit `export type { RagStatus }` would be pure redundancy (barrel already covers it), so nothing was
+  changed. _Original note below._
   `rollupRag`/`resultToRag` are exported from `index.ts`, but the **`RagStatus` type is not** — it's only
   reachable via `models/classStatus`. VS Code worked around it with `ApiClassLibraryDto['status']` indexed
   access, but both editions want the named type. One line: `export type { RagStatus } from './models/classStatus';`
