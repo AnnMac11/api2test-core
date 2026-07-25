@@ -43,6 +43,31 @@ test('every body verb × content-type has a send method (PUT/PATCH form + PATCH 
   }
 });
 
+test('typescript api-method library is at validator parity with csharp/python', () => {
+  // TS previously lagged: it lacked Validate{Delete,Forbidden,Conflict,ValidationError}ResponseAsync,
+  // so chooseExtractMethod's DELETE default (ValidateDeleteResponseAsync) would return a dead name in TS.
+  assert.equal(getDefaultApiMethodLibrary('typescript').length, 22);
+  const names = new Set(getDefaultApiMethodLibrary('typescript').map((m) => m.methodName));
+  for (const v of [
+    'ValidateDeleteResponseAsync',           // 200/204 — the DELETE extract default
+    'ValidateForbiddenResponseAsync',        // 403
+    'ValidateConflictResponseAsync',         // 409
+    'ValidateValidationErrorResponseAsync',  // 422
+  ]) {
+    assert.ok(names.has(v), `typescript: expected validator ${v}`);
+  }
+});
+
+test('every validator chooseExtractMethod can pick exists in all 3 languages', () => {
+  // The by-verb extract defaults: DELETE -> 200/204, everything else -> 200/201.
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    const names = new Set(getDefaultApiMethodLibrary(lang).map((m) => m.methodName));
+    for (const v of ['ValidateResponseAsync', 'ValidateDeleteResponseAsync', 'ExtractFieldFromResponse']) {
+      assert.ok(names.has(v), `${lang}: expected extract/validate method ${v}`);
+    }
+  }
+});
+
 test('accessors hand out fresh copies (mutation does not leak)', () => {
   const a = getDefaultDataLibrary('csharp');
   a.pop();

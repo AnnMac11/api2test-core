@@ -110,6 +110,9 @@ export {
 export type { MethodParamMap, PickerLike, CallGroup } from './services/e2eCaseLogic';
 // Response-example flattener (E2E-RESP core half) — dotted field paths for the builder's field dropdown.
 export { responseFields } from './services/responseFields';
+// Smart-default method selection (E2E-SEL-1) — the send method a class step pre-selects from its verb +
+// content-type. A default only; the client keeps the full list. Shared so both editions agree.
+export { chooseSendMethod, chooseExtractMethod, isFormEncoded } from './services/e2eMethodSelection';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
 export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
 export type { RawTestResult, BuildResult, ApiCall, VitestRun } from './services/TestRunnerService';

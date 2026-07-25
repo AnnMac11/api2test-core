@@ -419,11 +419,26 @@ grouping — `groupIntoCalls`, `isSendMethod`, `stepIncomplete`, `friendlyMethod
      generated pytest where practical.
   - **Edition impact:** Python is not consumed by VS Code (C#-only) or the current Desktop flows; it's a
     new language target. Confirm the consumer/edition before adopting. Lives entirely in **core**.
-- [ ] **E2E-SEL-1 — Edition-neutral extract/send method selection (new, 2026-07-25).** Both clients
-  need to **auto-select** which library methods a test-case step uses, and today that logic only exists
-  (partly) inside Desktop's client (`e2eCaseLogic.ts` — `extractRef` finds a single extractor by shape).
-  VS Code would have to re-port it (the same drift that hit `responseFields`/app-id linking). Lift the
-  decision into core as **pure, UI-free helpers** so Desktop and VS Code call one implementation.
+- [x] **E2E-SEL-1 — Edition-neutral extract/send method selection. DONE 2026-07-25 (`develop`).**
+  Pure, UI-free helpers in `src/services/e2eMethodSelection.ts`, exported from `index.ts`:
+  - `chooseSendMethod(verb, contentType)` → `GetAsync` / `DeleteAsync` / `Post|Put|PatchJsonAsync` /
+    `Post|Put|PatchFormAsync` (form vs json via `isFormEncoded`); `''` for an unknown verb so the client
+    shows no pre-selection. Depends on the send matrix completed by `APIM-SEND-1`.
+  - `chooseExtractMethod(responseField, verb)` → a response field selected ⇒ `ExtractFieldFromResponse`
+    (the `<T>` is NOT set here — it stays with the `E2E-CAP-1` capture-type picker, so method-choice and
+    type-choice remain separate, per user 2026-07-25). No field ⇒ validate by verb: DELETE →
+    `ValidateDeleteResponseAsync` (200/204), else `ValidateResponseAsync` (200/201 — covers GET 200 /
+    POST 201). Both are **defaults only**; clients keep the full list.
+  - **Sub-fix — TS validator parity (2026-07-25):** TS seed lacked `ValidateDeleteResponseAsync` (needed
+    by the DELETE extract default) plus `Validate{Forbidden,Conflict,ValidationError}ResponseAsync`. Added
+    all four so `chooseExtractMethod` resolves to a real method in every language (parity test + count pin
+    22 in `defaultLibraries.test.ts`).
+  - Bug-first: `test/e2eMethodSelection.test.ts` — RED shown for each (form-blind send, verb-blind extract)
+    → GREEN. Full suite 236/236, build clean.
+  - **Adoption:** VS Code **RB-8**; Desktop consumes in place of its client-side `extractRef`/auto-pick
+    (both `HANDOVER.md`s, 2026-07-25). **NOT subsumed:** `chooseExtractMethod` returns the method name only,
+    so the `E2E-CAP-1` manual type picker stays — build both.
+  - _Original brief (kept for context):_
   - **Design (user, 2026-07-25):**
     1. **Selecting a class auto-picks the SEND method and the RESPONSE/extract method** from the class's
        API type/verb (GET/POST/PUT/DELETE).
