@@ -107,6 +107,21 @@ test('every TypeScriptEmitter method is implemented (none throws a not-implement
     assert.doesNotThrow(() => e.emitDataLibrary([]));
 });
 
+test('#52: an integer field generates `public int`, a fractional number `public decimal`', () => {
+    // The whole point of #52: an integer id must not widen to `decimal`. The extraction side is pinned
+    // in extract.test.ts (fieldType stays `integer`); this pins the CONCRETE generated property type.
+    const req: ClassGenerationRequest = {
+        endpoint: '/store/order', method: 'POST', application: 'Pet Store',
+        fieldConfigurations: [
+            { name: 'id', type: 'integer', required: true, location: 'body' },
+            { name: 'price', type: 'number', required: true, location: 'body' },
+        ],
+    };
+    const code = emitter().emitRequestClass(req)!;
+    assert.match(code, /public int Id \{ get; set; \}/, 'integer → C# int, not decimal');
+    assert.match(code, /public decimal Price \{ get; set; \}/, 'fractional number → decimal');
+});
+
 test('form content-type adds ToFormBody()', () => {
     const req: ClassGenerationRequest = {
         endpoint: '/customers', method: 'POST', application: 'Stripe',

@@ -67,7 +67,15 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
-**As of 2026-07-25 (SEED-2 + CLS-5 + CLS-6 + E2E-CAP-GET landed/verified, branch `develop`):**
+**As of 2026-07-25 (SEED-2 + CLS-5 + CLS-6 + #52 + E2E-CAP-GET landed/verified, branch `develop`):**
+
+- **✅ `#52` DONE (guard added; already functionally fixed).** Integer ids were NOT widening to
+  `decimal` — `DataDictionaryService` keeps `integer` distinct and `ClassGenerationService.getCSharpType`
+  maps `integer`→`int` / `number`→`decimal` (fixed earlier, never closed here). The gap was that no test
+  pinned the **concrete generated property type** (extraction was covered in `extract.test.ts`, output was
+  not). Added `emitter.test.ts` "#52: integer → `public int`, fractional number → `public decimal`".
+  Bug-first: shown failing by regressing `getCSharpType`, then green. **215/215 green; guard-only, no
+  `src`/`dist` change.** Closes the Desktop Phase-1 mirror.
 
 - **✅ `SEED-2` DONE** — see below (committed `9d6616e`).
 - **✅ `E2E-CAP-GET` committed** (`dc0bfeb`) — the 2026-07-23 one-line GET-branch fix was done but had

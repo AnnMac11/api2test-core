@@ -18,10 +18,16 @@ here affect both editions — note the coordinated version bump on any task that
     consider together with a decision on bumping the build Node version).
   - PR #8 — tsx 4.22.4 → 4.23.0 (low risk).
   - PR #6 — rimraf 5.0.10 → 6.1.3 (low risk).
-- [ ] **#52 — integer ids typed as `decimal`** (lives HERE in core; tracked in the Desktop finish line,
-  `../api2test/docs/TASKS.md` Phase 1): `DataDictionaryService.ts:491` collapses `integer→number`, then
-  `ClassGenerationService.ts:356` maps `number→decimal`. Fix via the bug-first protocol — tighten the
-  `test/testGeneration.test.ts` assertion to pin `int`, show it fail, then fix. Ships to both editions.
+- [x] **#52 — integer ids typed as `decimal`. DONE 2026-07-25 (guard added; already functionally fixed).**
+  The code was already correct at both hops — `DataDictionaryService.mapTypeToFieldType`/`getFieldType`
+  keep `integer` distinct from `number`, and `ClassGenerationService.getCSharpType` maps `integer`→`int`,
+  `number`→`decimal` (both carry #52 comments; fixed in an earlier session, never closed here). The real
+  gap was **no test pinned the CONCRETE generated property type** — the extraction side was covered
+  (`extract.test.ts`) but not the output. Added `emitter.test.ts` "#52: an integer field generates
+  `public int`, a fractional number `public decimal`". Bug-first: shown **failing** by temporarily
+  regressing `getCSharpType` (`integer`→`decimal`) — error "integer → C# int, not decimal" — then green
+  after restore. **215/215 green**; no `src` change (guard-only), so no `dist` rebuild. Closes the Desktop
+  Phase-1 mirror.
 - [ ] **Audit engine test assertion depth** (from the Desktop Phase-1 coverage audit): tests must pin
   the CONCRETE generated output (`public int Id`, not "a class was produced") — see
   `../api2test/tests/README.md` "How deep".
