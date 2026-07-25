@@ -67,6 +67,41 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
+**As of 2026-07-25 (SEED-2 landed):**
+
+- **✅ `SEED-2` DONE** — `PhotoUrls` (`List<string>`) + `Tags` (`List<object>`) added as curated
+  (`isCustom: false`) worked-examples for array fields to all 3 seed sets (`data/libraries/{csharp,
+  typescript,python}/data-library.json`, ids 97/98). Root cause of the VS Code "photos method missing"
+  flag was simply that core's seed was never updated — the `refreshDefaults` merge pipeline is correct,
+  so **both editions pick these up on next activation** (no client change needed). Bug-first: new
+  `defaultLibraries.test.ts` presence case shown failing then green; counts 95→97. **213/213 green, build
+  clean, `dist` rebuilt.** Also closes the long-standing Desktop Phase-2 `PhotoUrls` task. Core version
+  left at `0.1.0` (coordinated bump happens at edition adoption, as with the prior lifts).
+
+**As of 2026-07-23 (no core code changed — one task dropped, one bug filed; both came from the VS Code
+thread):**
+
+- **⛔ `E2E-CAP-1` is DROPPED — do not build it.** It was going to teach `generateTestForRow` to read
+  `E2ECaseItem.capture` and emit a typed extraction, with a user-chosen scalar type picker in both
+  builders. VS Code was the only client writing `capture`, and on 2026-07-23 it switched to authoring the
+  **extract-METHOD step Desktop has always used** — `{type:'Method', ref:<extractor>, assignTo:<var>,
+  args:{fieldPath:<field>}}` — which `methodStep` already generates, including the typed
+  `ExtractField<T>` upgrade from the existing `varTypes` look-ahead. So the generator gap closes with no
+  core change, and the type picker is unnecessary (the type already comes from the body field the
+  variable feeds). **Desktop's matching `E2E-CAP` picker is also unnecessary — tell that thread.**
+  - **Load-bearing for clients now:** `takesFieldPath`. VS Code finds the extractor **by shape, never by
+    name**, so a renamed or user-authored extractor still works. Don't change that predicate casually.
+  - `E2ECaseItem.capture` stays in the DTO for older records; nothing generates from it.
+- **✅ `E2E-CAP-GET` FIXED later the same day** — one line in `classStep`'s GET branch
+  (`state.lastResponse = respVar`), bug-first test in `e2eGenerator.test.ts`, **212/212 green**, `dist`
+  rebuilt. The TS emitter was checked and never had the problem. Original finding below.
+- **🐛 Bug filed — `E2E-CAP-GET` (verified against the current build).** `classStep` sets
+  `state.lastResponse` for DELETE and for POST/PUT/form, but **not for GET**, so an extract step reading a
+  GET response emits `ExtractFieldFromResponse(/* response */, "id")` — won't compile. One line; check
+  `generateE2ETestTypeScript` for the same asymmetry. "GET a resource, capture its id, use it next" is an
+  ordinary chain, so **both editions generate broken code for it today**.
+- Core working tree otherwise untouched this session; nothing to build or ship.
+
 **As of 2026-07-19 (E2E-GROUP-1 + E2E-RESP-1 + CLS-1/2/3 landed, branch `develop`, uncommitted→committing):**
 
 - **Three VS-Code-blocking lifts done, bug-first, 211/211 green:**

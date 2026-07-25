@@ -1105,6 +1105,30 @@
     "comments": "Stripe amounts are integer cents, not decimals."
   },
   {
+    "id": "97",
+    "methodName": "PhotoUrls",
+    "returnType": "List<string>",
+    "parameters": "count:int=3",
+    "description": "Returns a list of random placeholder image URLs for array fields (e.g. petstore photoUrls).",
+    "code": "public List<string> PhotoUrls(int count = 3) { var urls = new List<string>(); for (int i = 0; i < count; i++) { urls.Add(_faker.Image.PicsumUrl()); } return urls; }",
+    "createdDate": "2026-07-25T00:00:00Z",
+    "isCustom": false,
+    "project": null,
+    "comments": "Array-of-strings worked example (petstore photoUrls)."
+  },
+  {
+    "id": "98",
+    "methodName": "Tags",
+    "returnType": "List<object>",
+    "parameters": "count:int=2",
+    "description": "Returns a list of {id, name} objects for array fields (e.g. petstore tags).",
+    "code": "public List<object> Tags(int count = 2) { var tags = new List<object>(); for (int i = 0; i < count; i++) { tags.Add(new { id = _faker.Random.Long(1, 1000), name = _faker.Lorem.Word() }); } return tags; }",
+    "createdDate": "2026-07-25T00:00:00Z",
+    "isCustom": false,
+    "project": null,
+    "comments": "Array-of-objects worked example (petstore tags)."
+  },
+  {
     "id": "param-string",
     "methodName": "ParameterString",
     "returnType": "string",

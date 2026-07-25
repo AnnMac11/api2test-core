@@ -25,6 +25,35 @@ here affect both editions — note the coordinated version bump on any task that
 - [ ] **Audit engine test assertion depth** (from the Desktop Phase-1 coverage audit): tests must pin
   the CONCRETE generated output (`public int Id`, not "a class was produced") — see
   `../api2test/tests/README.md` "How deep".
+- [x] **SEED-2 — promote `PhotoUrls` + `Tags` into the curated Data Library (all 3 languages). DONE
+  2026-07-25.** Added both curated (`isCustom: false`) methods to
+  `src/data/libraries/{csharp,typescript,python}/data-library.json` (ids 97/98): **`PhotoUrls`**
+  (`List<string>`, `count:int=3` — C# `_faker.Image.PicsumUrl()` loop, TS `faker.image.url()`, Python
+  `self._fake.image_url()`) and **`Tags`** (`List<object>`, `count:int=2` — self-contained `{id,name}`
+  anonymous objects). returnType uses the shared `List<…>` token across all 3 langs (precedent:
+  `StringList`/`StripeTaxIds`). Bug-first: new `test/defaultLibraries.test.ts` case "SEED-2: PhotoUrls
+  and Tags array-field methods are curated in all 3 languages" — shown **failing** (methods absent in
+  csharp/py/ts), then green; existing count assertions bumped 95→97. **213/213 green, build clean, `dist`
+  rebuilt.** Merge pipeline was already correct (`refreshDefaults`) — core seed was just never updated;
+  **VS Code + Desktop pick them up on next activation.** Closes the Desktop task
+  `../api2test/docs/TASKS.md` Phase 2 ("Data Library `PhotoUrls` method for array fields"). _Original brief
+  below._ Both were authored in **Desktop's local runtime data**
+  (`../api2test/ui-browser/api2test.client/data/data-library.json`) as `isCustom: false` curated
+  worked-examples for array fields, but were never promoted to core's seed — so neither editions'
+  merge-on-activation (`refreshDefaults`) can hand them out. Root cause of the VS Code "photos method
+  missing" flag: **core was never updated; the merge pipeline is correct** (`refreshDefaults` adds any
+  curated method the user lacks — `src/data/defaultLibraries.ts:107`). Also closes the long-standing
+  Desktop task `../api2test/docs/TASKS.md` Phase 2 ("Data Library `PhotoUrls` method for array fields",
+  confirmed not-in-core 2026-07-13).
+  - **`PhotoUrls`** — `List<string>` of random image URLs, param `count:int=3`. C#:
+    `public List<string> PhotoUrls(int count = 3) { var urls = new List<string>(); for (int i = 0; i < count; i++) { urls.Add(_faker.Image.PicsumUrl()); } return urls; }`
+  - **`Tags`** — `List<object>` of `{id, name}`, param `count:int=2` (self-contained anonymous objects
+    so the shared library compiles without a per-API type — petstore `tags`). C#:
+    `public List<object> Tags(int count = 2) { var tags = new List<object>(); for (int i = 0; i < count; i++) { tags.Add(new { id = _faker.Random.Long(1, 1000), name = _faker.Lorem.Word() }); } return tags; }`
+  - Add to `src/data/libraries/{csharp,typescript,python}/data-library.json` (port the C# code to TS +
+    Python idioms — cf. existing `ProfilePictureUrl` which is already 3-language). Rebuild `dist`.
+    Bug-first: extend `test/defaultLibraries.test.ts` (the ParameterString/#56 pattern) to assert both
+    names present in all 3 curated sets, red→green. **VS Code + Desktop pick them up on next activation.**
 
 ### Desktop→core lifts for VS Code parity — added 2026-07-17
 
@@ -169,6 +198,20 @@ model, and **untangle the two things that currently collide under the name "stat
     (drop the local `statusColours` + `useBatchClassGeneration` `.status`→`.state`; fix the
     red-after-successful-regenerate bug where `status` laundering only handled `'pending'`→`'grey'`).
     Both tracked in their repos.
+- [ ] **CLS-5 — re-export `RagStatus` from the core `index`. Filed 2026-07-19 (from VS Code CLS-2 adoption).**
+  `rollupRag`/`resultToRag` are exported from `index.ts`, but the **`RagStatus` type is not** — it's only
+  reachable via `models/classStatus`. VS Code worked around it with `ApiClassLibraryDto['status']` indexed
+  access, but both editions want the named type. One line: `export type { RagStatus } from './models/classStatus';`
+  (or add it to the existing `classStatus` re-export). Trivial; do on the next core touch.
+- [ ] **CLS-6 — lift the class-generation-state DERIVATION into core (both editions derive it). Filed
+  2026-07-19 (from VS Code CLS-2).** Core owns the transient state as a BATCH outcome (`generateClassLibrary`
+  → `.state`), but the rule to derive a **library entry's** display state on demand (not mid-batch) is
+  duplicated in the clients: VS Code added `utils/classStatus.ts` `classGenerationState(entry, hasCode)`
+  (`failed` if `generationError`, else `generated` if code exists, else `pending`), and Desktop CLS-4 will
+  derive the same. Lift a small pure `deriveClassState(entry, hasCode)` into core `services/classStatus.ts`
+  so both agree — **and reconcile the vocabulary**: the batch outcome uses `error`/`empty`, the client
+  derivation uses `failed` and folds `empty` into `pending`. Decide one word set (client display maps
+  colours regardless). Not blocking — filed so the third copy doesn't drift. Bug-first per the rule.
 
 ### Local execution orchestration (EXEC series) — added 2026-07-17
 
@@ -240,6 +283,99 @@ grouping — `groupIntoCalls`, `isSendMethod`, `stepIncomplete`, `friendlyMethod
   input, dedup) — shown failing (module absent), then green. **205/205 green, build clean.**
   - **Adoption (clients):** VS Code E2E-RESP (flatten the endpoint's stored `responseExamples` into the
     capture/param dropdown). Desktop DA-11 — the route drops its local `flatten`, calls core.
+- [x] **E2E-CAP-GET — FIXED 2026-07-23 (same day it was filed).** One line in `classStep`: the GET
+  branch now sets `state.lastResponse = respVar`, like DELETE and POST/PUT/form already did. The TS
+  emitter was checked and is fine — `generateE2ETestTypeScript` sets `lastResponse` unconditionally
+  after every class step, so it never had the asymmetry. Bug-first: new `e2eGenerator.test.ts` case
+  "a capture after a GET reads the GET response (E2E-CAP-GET)" — GET pet → extract id → DELETE by that
+  id — shown **failing** on the old generator ("the extract must read the GET response", emitted
+  `/* response */`), then passing. **212/212 core tests green**, `dist` rebuilt, and the VS Code
+  extension re-run against it (80 passing). _Original entry:_ an extract step after a GET class step
+  emits `/* response */`. Filed 2026-07-23
+  (found while fixing VS Code's OUT capture; verified against the current build).** `classStep`
+  (`E2ETestGenerationService.ts` ~:108) sets `state.lastResponse = respVar` for **DELETE** and for the
+  POST/PUT/form branch, but the **GET branch does not** — even though it declares `var responseN = await
+  GetAsync<object>(...)`. So `resolveArg`'s `response` lookup finds nothing and a following extract step
+  generates `var orderId = await ExtractFieldFromResponse(/* response */, "id");` — it won't compile.
+  Reproduced with a GET class + `ExtractFieldFromResponse` chain.
+  - **Fix:** set `state.lastResponse = respVar` in the GET branch (one line). Check the TS emitter
+    (`generateE2ETestTypeScript`) for the same asymmetry.
+  - **Why it matters:** "GET a resource, capture its id, use it in the next call" is an ordinary chain —
+    both editions' builders offer it, so both generate broken code today.
+  - **Bug-first:** a GET → extract → use chain must pass the class's response variable to the extractor;
+    shown failing on the current generator (`/* response */`), then passing.
+- [ ] **E2E-SEL-1 — Edition-neutral extract/send method selection (new, 2026-07-25).** Both clients
+  need to **auto-select** which library methods a test-case step uses, and today that logic only exists
+  (partly) inside Desktop's client (`e2eCaseLogic.ts` — `extractRef` finds a single extractor by shape).
+  VS Code would have to re-port it (the same drift that hit `responseFields`/app-id linking). Lift the
+  decision into core as **pure, UI-free helpers** so Desktop and VS Code call one implementation.
+  - **Design (user, 2026-07-25):**
+    1. **Selecting a class auto-picks the SEND method and the RESPONSE/extract method** from the class's
+       API type/verb (GET/POST/PUT/DELETE).
+    2. **Selecting an OUT response field updates the extract method** chosen for that capture (driven by
+       the field + API type — e.g. a token-ish field → `ExtractToken`, a typed scalar → `ExtractField<T>`).
+    3. Selection is a **smart default only** — clients keep the **full method list** so a user's custom
+       method is still selectable. Core returns the recommended ref; it does not restrict the list.
+  - **Core work:** pure helpers e.g. `chooseSendMethod(apiTypeOrVerb)` and
+    `chooseExtractMethod(responseField, apiType)` → a method ref resolved **by shape** (reuse
+    `takesFieldPath`, never by name), type-aware (align with `ExtractField<T>` + `E2E-CAP-1`). No vscode/
+    Next imports. Export from the same surface as `responseFields`/`takesFieldPath`. Bug-first tests:
+    class verb → send+extract ref; response-field type → expected extract ref; custom method still valid.
+  - **Adoption:** VS Code **RB-8** (`../Api2TestVS/docs/TASKS.md`); Desktop consumes it in place of its
+    client-side `extractRef`/auto-pick logic (see Desktop `HANDOVER.md` note, 2026-07-25).
+  - **Relationship to `E2E-CAP-1`:** if the auto-selected extract method already encodes the type, it may
+    subsume the manual capture-type picker — flagged for the user in RB-8; don't build both blindly.
+- [ ] **E2E-CAP-1 — REVIVED 2026-07-25 (user reversed the 2026-07-23 drop).** The type picker is
+  wanted after all: the "type is inferred from the body field the variable feeds" theory only holds when
+  the captured variable lands in a **typed body field** downstream. The common case — capture `id` →
+  `orderId`, then feed it to a **URL placeholder** `{id}` in the next call — has **no downstream type to
+  infer**, so today core emits the non-generic `ExtractFieldFromResponse` (untyped). **Decision (user,
+  2026-07-25):** the next class does NOT drive the type — the **user chooses it explicitly** from the
+  dropdown (they read the next class's fields and pick), and core emits exactly that. Build the spec
+  below.
+  - **Type selection is required at GENERATE, not before (user, 2026-07-25):** the picker starts
+    **unselected** (no silent `string` default); nothing is generated on selection. When the user
+    presses Generate, an unset type **blocks generation** with an actionable message. (This overrides
+    the "`string` (default)" wording in the original brief below — default is *unset*, enforced at
+    generate.)
+  - _Superseded DROP note (2026-07-23), kept for context — why the drop was wrong:_ the drop assumed
+    VS Code's OUT capture always converts to a method step whose `ExtractField<T>` type is inferred by
+    the `varTypes` look-ahead. That inference does not fire for the URL-placeholder sink, which is the
+    primary capture pattern.
+  - **What clients rely on instead (keep exported + working):** `takesFieldPath` — VS Code finds the
+    extractor **by shape, never by name** (`extractMethodRef`), so a renamed or user-authored extractor
+    still works. Changing that predicate breaks both builders.
+  - **`E2ECaseItem.capture` stays in the DTO** for records saved before the change; nothing generates
+    from it. If a client is ever pointed back at it, re-open this task rather than half-supporting it.
+  - **Tell Desktop:** the matching Desktop `E2E-CAP` type picker is also unnecessary — see
+    `../api2test/docs/TASKS.md`.
+  - _Original brief, kept for context:_ **Bug found:** `generateTestForRow` does **not
+  read `E2ECaseItem.capture` at all** — `classStep` emits the class call but never declares the capture
+  variable, so a class-first chain (capture `id`→`orderId`, then use `orderId` in a later step's URL
+  `{id}`/override) generates code that references an **undeclared variable** and won't compile. The
+  typed-extraction machinery (`ExtractField<T>` + the `csTypeOf` look-ahead) exists **only** on the
+  method-based `ExtractField` step, not on the class-first `capture`. (Verified: all 4 `capture` mentions
+  in `E2ETestGenerationService.ts` are comments; a two-step capture→delete chain declares `orderId`
+  nowhere.)
+  - **Decision (user, 2026-07-19): the capture carries an explicit, USER-CHOSEN type** (a small scalar
+    dropdown in the builder), rather than inferring it from the downstream field. So core doesn't need
+    the look-ahead for this path — it emits `ExtractField<T>` straight from `capture.type`.
+  - **Type list (edition-agnostic UI, one `number`):** `string` (default), `number`, `bool`/`boolean`,
+    `Guid`. **No `object`/`array`** (captures feed URL `{}` parts and simple fields). **`number` maps to
+    C# `decimal`** (holds large integer ids exactly — unlike `double` past 2^53 — and renders cleanly
+    into URLs: `123`, not `123.0`); TypeScript `number`.
+  - **Core work:** (1) add `type?: string` to `E2ECaseItem.capture` (`models/E2EDto.ts`); (2) in
+    `classStep`, after the class call, emit the extraction into the capture variable, typed by
+    `capture.type` (default `string`), mapping `number`→`decimal` for C# and `number` for TS; (3) the
+    read must be tolerant of a JSON value that comes back as a **number OR a string** and render it
+    safely (spec: extract the raw JSON element and `.ToString()` rather than a strict `GetString()` that
+    throws on a number) — the common case is a scalar going into a URL part. Do the TS emitter half too
+    (`generateE2ETestTypeScript`). Bug-first: a capture→use chain must (a) declare the variable and
+    (b) declare it with the chosen type; shown failing on today's generator (undeclared), then passing.
+  - **Adoption:** VS Code adds the scalar type picker to the OUT capture row + persists `capture.type`
+    (paused until this lands — the picker generates nothing today; **enforce "type required" at
+    Generate** client-side per the 2026-07-25 decision); Desktop adds the same picker
+    (see `../api2test/docs/TASKS.md`). VS Code review-batch reference: **RB-5** (`../Api2TestVS/docs/TASKS.md`).
 - [ ] **E2E-MODEL-1 (optional, later) — unified TestCase model + store rule.** Core has the E2E
   building blocks (`E2ECaseItem`, `generateTestForRow`) but **no unified `TestCase { items[], header,
   status }` wrapper or store rule** — Desktop keeps it in the client, and VS Code is adding its own for

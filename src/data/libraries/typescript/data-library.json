@@ -154,5 +154,29 @@
     "isCustom": false,
     "project": null,
     "comments": null
+  },
+  {
+    "id": "97",
+    "methodName": "PhotoUrls",
+    "returnType": "List<string>",
+    "parameters": "count: number = 3",
+    "description": "Returns a list of random placeholder image URLs for array fields (e.g. petstore photoUrls).",
+    "code": "photoUrls(count: number = 3): string[] {\n  const urls: string[] = [];\n  for (let i = 0; i < count; i++) {\n    urls.push(faker.image.url());\n  }\n  return urls;\n}",
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": "Array-of-strings worked example (petstore photoUrls)."
+  },
+  {
+    "id": "98",
+    "methodName": "Tags",
+    "returnType": "List<object>",
+    "parameters": "count: number = 2",
+    "description": "Returns a list of {id, name} objects for array fields (e.g. petstore tags).",
+    "code": "tags(count: number = 2): object[] {\n  const tags: object[] = [];\n  for (let i = 0; i < count; i++) {\n    tags.push({ id: faker.number.int({ min: 1, max: 1000 }), name: faker.lorem.word() });\n  }\n  return tags;\n}",
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": "Array-of-objects worked example (petstore tags)."
   }
 ]

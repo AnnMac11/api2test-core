@@ -7,7 +7,7 @@ import {
 } from '../src/data/defaultLibraries';
 
 test('csharp libraries return the canonical built-in sets', () => {
-  assert.equal(getDefaultDataLibrary('csharp').length, 95);
+  assert.equal(getDefaultDataLibrary('csharp').length, 97);
   assert.equal(getDefaultApiMethodLibrary('csharp').length, 23);
 });
 
@@ -35,13 +35,13 @@ test('csharp wrapper library uses the names the generators emit', () => {
 test('accessors hand out fresh copies (mutation does not leak)', () => {
   const a = getDefaultDataLibrary('csharp');
   a.pop();
-  assert.equal(getDefaultDataLibrary('csharp').length, 95);
+  assert.equal(getDefaultDataLibrary('csharp').length, 97);
 });
 
 test('python libraries mirror the csharp set (same methods, Python bodies)', () => {
   const py = getDefaultDataLibrary('python');
   const cs = getDefaultDataLibrary('csharp');
-  assert.equal(py.length, 95);
+  assert.equal(py.length, 97);
   assert.equal(getDefaultApiMethodLibrary('python').length, 23);
   // same methodNames (auto-matching parity), but Python code bodies
   assert.deepEqual(py.map((m) => m.methodName).sort(), cs.map((m) => m.methodName).sort());
@@ -64,6 +64,14 @@ test('data library includes the per-type Parameter placeholders (#56)', () => {
   }
 });
 
+test('SEED-2: PhotoUrls and Tags array-field methods are curated in all 3 languages', () => {
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    const names = new Set(getDefaultDataLibrary(lang).map((m) => m.methodName));
+    assert.ok(names.has('PhotoUrls'), `${lang}: expected curated PhotoUrls`);
+    assert.ok(names.has('Tags'), `${lang}: expected curated Tags`);
+  }
+});
+
 test('mergeDefaults adds missing defaults and preserves user items', () => {
   const userCustom = { methodName: 'MyCustomThing', code: 'x' };
   const existing = [userCustom, { methodName: 'FirstName' }];
@@ -71,7 +79,7 @@ test('mergeDefaults adds missing defaults and preserves user items', () => {
   // user's custom method survives, FirstName is not duplicated, the rest are added
   assert.ok(merged.includes(userCustom), 'user custom preserved');
   assert.equal(merged.filter((m: any) => m.methodName === 'FirstName').length, 1, 'no duplicate');
-  assert.equal(merged.length, 95 + 1, 'all defaults present plus the one custom');
+  assert.equal(merged.length, 97 + 1, 'all defaults present plus the one custom');
 });
 
 test('every seeded base-path / token method is attached to an application by id', () => {
@@ -99,5 +107,5 @@ test('every seeded base-path / token method is attached to an application by id'
 test('mergeDefaults returns the same array when nothing is missing', () => {
   const defaults = getDefaultDataLibrary('csharp');
   const merged = mergeDefaults(defaults, defaults);
-  assert.equal(merged.length, 95);
+  assert.equal(merged.length, 97);
 });
