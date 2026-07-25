@@ -299,5 +299,44 @@
     "isCustom": false,
     "createdDate": "2026-06-30T00:00:00.000Z",
     "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "29",
+    "methodName": "PutFormAsync",
+    "description": "Sends a PUT request with an application/x-www-form-urlencoded body and Bearer auth.",
+    "parameters": "token:string, url:string, formBody:string",
+    "returnType": "Task<HttpResponseMessage>",
+    "code": "public static async Task<HttpResponseMessage> PutFormAsync(string token, string url, string formBody)\n{\n    try\n    {\n        using (var request = new HttpRequestMessage(HttpMethod.Put, url))\n        {\n            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", token);\n            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(\"application/json\"));\n            request.Content = new StringContent(formBody, Encoding.UTF8, \"application/x-www-form-urlencoded\");\n            HttpResponseMessage response = await _httpClient.SendAsync(request);\n            return Reporter.Record(\"PUT\", url, formBody, response);\n        }\n    }\n    catch (Exception ex)\n    {\n        throw new ApplicationException($\"Error calling API: {ex.Message}\", ex);\n    }\n}",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Form-encoded PUT helper. Selected for x-www-form-urlencoded specs whose verb is PUT."
+  },
+  {
+    "id": "30",
+    "methodName": "PatchJsonAsync",
+    "description": "Sends a PATCH request with a JSON body to the specified API endpoint with Bearer token authentication.",
+    "parameters": "token:string, url:string, jsonBody:string",
+    "returnType": "Task<HttpResponseMessage>",
+    "code": "public static async Task<HttpResponseMessage> PatchJsonAsync(string token, string url, string jsonBody)\n{\n    try\n    {\n        using (var request = new HttpRequestMessage(new HttpMethod(\"PATCH\"), url))\n        {\n            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", token);\n            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(\"application/json\"));\n            request.Content = new StringContent(jsonBody, Encoding.UTF8, \"application/json\");\n            HttpResponseMessage response = await _httpClient.SendAsync(request);\n            return Reporter.Record(\"PATCH\", url, jsonBody, response);\n        }\n    }\n    catch (Exception ex)\n    {\n        throw new ApplicationException($\"Error calling API: {ex.Message}\", ex);\n    }\n}",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Standard PATCH request helper with Bearer token authentication."
+  },
+  {
+    "id": "31",
+    "methodName": "PatchFormAsync",
+    "description": "Sends a PATCH request with an application/x-www-form-urlencoded body and Bearer auth.",
+    "parameters": "token:string, url:string, formBody:string",
+    "returnType": "Task<HttpResponseMessage>",
+    "code": "public static async Task<HttpResponseMessage> PatchFormAsync(string token, string url, string formBody)\n{\n    try\n    {\n        using (var request = new HttpRequestMessage(new HttpMethod(\"PATCH\"), url))\n        {\n            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", token);\n            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(\"application/json\"));\n            request.Content = new StringContent(formBody, Encoding.UTF8, \"application/x-www-form-urlencoded\");\n            HttpResponseMessage response = await _httpClient.SendAsync(request);\n            return Reporter.Record(\"PATCH\", url, formBody, response);\n        }\n    }\n    catch (Exception ex)\n    {\n        throw new ApplicationException($\"Error calling API: {ex.Message}\", ex);\n    }\n}",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Form-encoded PATCH helper. Selected for x-www-form-urlencoded specs whose verb is PATCH."
   }
 ]

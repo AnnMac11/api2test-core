@@ -299,5 +299,44 @@
     "isCustom": false,
     "createdDate": "2026-06-30T00:00:00.000Z",
     "comments": "Validates a negative API response status for test assertions"
+  },
+  {
+    "id": "29",
+    "methodName": "PutFormAsync",
+    "description": "Sends a PUT request with an application/x-www-form-urlencoded body and Bearer auth.",
+    "parameters": "token:string, url:string, formBody:string",
+    "returnType": "Task<HttpResponseMessage>",
+    "code": "def put_form_async(token, url, form_body):\n    return reporter.record(requests.put(url, headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/x-www-form-urlencoded\", \"Accept\": \"application/json\"}, data=form_body))",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Form-encoded PUT helper. Selected for x-www-form-urlencoded specs whose verb is PUT."
+  },
+  {
+    "id": "30",
+    "methodName": "PatchJsonAsync",
+    "description": "Sends a PATCH request with a JSON body to the specified API endpoint with Bearer token authentication.",
+    "parameters": "token:string, url:string, jsonBody:string",
+    "returnType": "Task<HttpResponseMessage>",
+    "code": "def patch_json_async(token, url, json_body):\n    return reporter.record(requests.patch(url, headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/json\", \"Accept\": \"application/json\"}, data=json_body))",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Standard PATCH request helper with Bearer token authentication."
+  },
+  {
+    "id": "31",
+    "methodName": "PatchFormAsync",
+    "description": "Sends a PATCH request with an application/x-www-form-urlencoded body and Bearer auth.",
+    "parameters": "token:string, url:string, formBody:string",
+    "returnType": "Task<HttpResponseMessage>",
+    "code": "def patch_form_async(token, url, form_body):\n    return reporter.record(requests.patch(url, headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/x-www-form-urlencoded\", \"Accept\": \"application/json\"}, data=form_body))",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Form-encoded PATCH helper. Selected for x-www-form-urlencoded specs whose verb is PATCH."
   }
 ]

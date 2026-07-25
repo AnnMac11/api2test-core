@@ -8,7 +8,7 @@ import {
 
 test('csharp libraries return the canonical built-in sets', () => {
   assert.equal(getDefaultDataLibrary('csharp').length, 97);
-  assert.equal(getDefaultApiMethodLibrary('csharp').length, 23);
+  assert.equal(getDefaultApiMethodLibrary('csharp').length, 26);
 });
 
 test('csharp api-method library includes the negative-response validators', () => {
@@ -32,6 +32,17 @@ test('csharp wrapper library uses the names the generators emit', () => {
   }
 });
 
+test('every body verb × content-type has a send method (PUT/PATCH form + PATCH json) in all 3 languages', () => {
+  // chooseSendMethod (E2E-SEL-1) maps verb + form/json to a library method; a form PUT or any PATCH
+  // previously had nothing to select. These fill that matrix — must exist in every language.
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    const names = new Set(getDefaultApiMethodLibrary(lang).map((m) => m.methodName));
+    for (const send of ['PutFormAsync', 'PatchJsonAsync', 'PatchFormAsync']) {
+      assert.ok(names.has(send), `${lang}: expected send method ${send}`);
+    }
+  }
+});
+
 test('accessors hand out fresh copies (mutation does not leak)', () => {
   const a = getDefaultDataLibrary('csharp');
   a.pop();
@@ -42,7 +53,7 @@ test('python libraries mirror the csharp set (same methods, Python bodies)', () 
   const py = getDefaultDataLibrary('python');
   const cs = getDefaultDataLibrary('csharp');
   assert.equal(py.length, 97);
-  assert.equal(getDefaultApiMethodLibrary('python').length, 23);
+  assert.equal(getDefaultApiMethodLibrary('python').length, 26);
   // same methodNames (auto-matching parity), but Python code bodies
   assert.deepEqual(py.map((m) => m.methodName).sort(), cs.map((m) => m.methodName).sort());
   const firstName = py.find((m) => m.methodName === 'FirstName')!;

@@ -197,5 +197,44 @@
     "isCustom": false,
     "createdDate": "2026-07-16T00:00:00.000Z",
     "comments": null
+  },
+  {
+    "id": "16",
+    "methodName": "PutFormAsync",
+    "description": "Sends a PUT request with an application/x-www-form-urlencoded body and Bearer auth.",
+    "parameters": "token: string, url: string, formBody: string",
+    "returnType": "Promise<Response>",
+    "code": "static async putForm(token: string, url: string, formBody: string): Promise<Response> {\n  const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' };\n  if (token) { headers.Authorization = `Bearer ${token}`; }\n  const response = await fetch(url, { method: 'PUT', headers, body: formBody });\n  return Reporter.record('PUT', url, formBody, response);\n}",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Form-encoded PUT helper. Selected for x-www-form-urlencoded specs whose verb is PUT."
+  },
+  {
+    "id": "17",
+    "methodName": "PatchJsonAsync",
+    "description": "Sends a PATCH request with a JSON body to the specified API endpoint with Bearer token authentication.",
+    "parameters": "token: string, url: string, jsonBody: string",
+    "returnType": "Promise<Response>",
+    "code": "static async patchJson(token: string, url: string, jsonBody: string): Promise<Response> {\n  const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/json' };\n  if (token) { headers.Authorization = `Bearer ${token}`; }\n  const response = await fetch(url, { method: 'PATCH', headers, body: jsonBody });\n  return Reporter.record('PATCH', url, jsonBody, response);\n}",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Standard PATCH request helper with Bearer token authentication."
+  },
+  {
+    "id": "18",
+    "methodName": "PatchFormAsync",
+    "description": "Sends a PATCH request with an application/x-www-form-urlencoded body and Bearer auth.",
+    "parameters": "token: string, url: string, formBody: string",
+    "returnType": "Promise<Response>",
+    "code": "static async patchForm(token: string, url: string, formBody: string): Promise<Response> {\n  const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' };\n  if (token) { headers.Authorization = `Bearer ${token}`; }\n  const response = await fetch(url, { method: 'PATCH', headers, body: formBody });\n  return Reporter.record('PATCH', url, formBody, response);\n}",
+    "category": "HTTP Requests",
+    "application": "Default",
+    "isCustom": false,
+    "createdDate": "2026-07-25T00:00:00.000Z",
+    "comments": "Form-encoded PATCH helper. Selected for x-www-form-urlencoded specs whose verb is PATCH."
   }
 ]

@@ -11,6 +11,15 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [x] **APIM-SEND-1 — complete the send-method matrix (verb × content-type). DONE 2026-07-25 (`develop`).**
+  Prep for `E2E-SEL-1`'s `chooseSendMethod`: a form-encoded PUT, and PATCH (json + form), had no library
+  method to select (only `PostForm`/`PostJson`/`PutJson` existed). Added **`PutFormAsync`,
+  `PatchJsonAsync`, `PatchFormAsync`** to all 3 seed api-method libraries (csharp/typescript/python),
+  matching each language's existing helper style (`Reporter.Record`/`reporter.record`, Bearer + Accept
+  json, correct Content-Type). Content-type is already tagged per class (`ApiClassLibraryDto.contentType`,
+  set at import from the spec — OpenAPI json vs Postman form header — and read via `isFormEncoded`), so the
+  selector keys off verb + that. Seed counts 23→26; `test/defaultLibraries.test.ts` count pins updated +
+  a new test asserts the three exist in every language. **227/227 green, build clean.**
 - [x] **RB-1 / RB-3 — data-method matching + display order lifted to core. DONE 2026-07-25 (`develop`).**
   New `services/dataMethodMatching.ts` (exported from `index.ts`) is the single source for field↔method
   matching: `typeClass` (the fine 6-bucket classifier — `DataDictionaryService`'s private duplicate is
