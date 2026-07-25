@@ -34,9 +34,20 @@ here affect both editions — note the coordinated version bump on any task that
   regressing `getCSharpType` (`integer`→`decimal`) — error "integer → C# int, not decimal" — then green
   after restore. **215/215 green**; no `src` change (guard-only), so no `dist` rebuild. Closes the Desktop
   Phase-1 mirror.
-- [ ] **Audit engine test assertion depth** (from the Desktop Phase-1 coverage audit): tests must pin
-  the CONCRETE generated output (`public int Id`, not "a class was produced") — see
-  `../api2test/tests/README.md` "How deep".
+- [x] **Audit engine test assertion depth — DONE 2026-07-25.** Read-across of all 36 `test/*.test.ts`:
+  the suite is strong (most generator/emitter tests pin exact emitted code and `tsc --strict`-compile it).
+  Found the C# generator tests were shallower than their TS twins and deepened the 3 real gaps, each
+  proven bug-first (tightened assertion shown **failing** on a deliberately-broken emitter, then green):
+  - `emitter.test.ts` "data-method default": was `match(/class/)` + `match(/Email/)` (token anywhere) →
+    now pins `public string Email { get; set; } = new DataGenerator().Email();`. Proof: dropped the
+    initializer in `ClassGenerationService.dataCall` → red.
+  - `testGeneration.test.ts`: added "POST body pins the wrapper call + request-body construction" — the
+    namespace test never touched the call site. Pins `var requestBody = new PetStorePostPet().ToJson();`
+    and `await ApiMethods.GetAsync(token, url, requestBody)`. Proof: swapped arg order → red.
+  - `emitter.test.ts` TS-adapter test: was `doesNotThrow` only → now pins `export class ApiMethods` /
+    `export class DataGenerator` (catches an empty/wrong delegation a `doesNotThrow` would pass). Proof:
+    adapter `return ''` → red.
+  **216/216 green, build clean, src unchanged (test-only).**
 - [x] **SEED-2 — promote `PhotoUrls` + `Tags` into the curated Data Library (all 3 languages). DONE
   2026-07-25.** Added both curated (`isCustom: false`) methods to
   `src/data/libraries/{csharp,typescript,python}/data-library.json` (ids 97/98): **`PhotoUrls`**
