@@ -210,15 +210,21 @@ model, and **untangle the two things that currently collide under the name "stat
   reachable via `models/classStatus`. VS Code worked around it with `ApiClassLibraryDto['status']` indexed
   access, but both editions want the named type. One line: `export type { RagStatus } from './models/classStatus';`
   (or add it to the existing `classStatus` re-export). Trivial; do on the next core touch.
-- [ ] **CLS-6 — lift the class-generation-state DERIVATION into core (both editions derive it). Filed
-  2026-07-19 (from VS Code CLS-2).** Core owns the transient state as a BATCH outcome (`generateClassLibrary`
-  → `.state`), but the rule to derive a **library entry's** display state on demand (not mid-batch) is
-  duplicated in the clients: VS Code added `utils/classStatus.ts` `classGenerationState(entry, hasCode)`
-  (`failed` if `generationError`, else `generated` if code exists, else `pending`), and Desktop CLS-4 will
-  derive the same. Lift a small pure `deriveClassState(entry, hasCode)` into core `services/classStatus.ts`
-  so both agree — **and reconcile the vocabulary**: the batch outcome uses `error`/`empty`, the client
-  derivation uses `failed` and folds `empty` into `pending`. Decide one word set (client display maps
-  colours regardless). Not blocking — filed so the third copy doesn't drift. Bug-first per the rule.
+- [x] **CLS-6 — lift the class-generation-state DERIVATION into core (both editions derive it). DONE
+  2026-07-25 (branch `develop`).** New `deriveClassState(entry, hasCode)` in `services/classStatus.ts`
+  (exported from `index.ts`): `error` if `generationError` set (wins even over a stale class file), else
+  `generated` when `hasCode`, else `pending`. **Vocabulary reconciled onto the batch
+  `ClassGenerationState` (`generated|pending|error|empty`)** — user decision 2026-07-25: canonical word
+  set is the batch outcome's (core already owns it). The clients' `failed` folds into `error`; `empty`
+  (no body) is a batch-time distinction only, never derivable from `(entry, hasCode)`, so the function
+  never returns it. Colours stay client-side. Bug-first: `test/classStatus.test.ts` case (pending/
+  generated/error-wins) shown **failing** (`deriveClassState is not a function`), then green. **214/214
+  green, build clean, `dist` rebuilt.**
+  - **Adoption (clients):** VS Code replaces its local `utils/classStatus.ts` `classGenerationState`
+    with core's `deriveClassState` (map its `failed` label → core `error`); Desktop CLS-4 uses it in
+    place of deriving the same. _Original note below._ Core owns the transient state as a BATCH outcome
+    (`generateClassLibrary` → `.state`), but the rule to derive a **library entry's** display state on
+    demand (not mid-batch) was duplicated in the clients.
 
 ### Local execution orchestration (EXEC series) — added 2026-07-17
 

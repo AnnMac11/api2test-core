@@ -31,7 +31,7 @@ export { generateClassLibrary, toClassGenerationRequest } from './services/batch
 export type { ClassGenerationState, ClassGenerationOutcome, BatchGenerateResult } from './services/batchClassGeneration';
 // Class status model (CLS): the user RAG `RagStatus` (models) + the roll-up / result rule. Colours stay
 // client-side (theme tokens). `rollupRag` drives the E2E/test-case impact cascade shared by both editions.
-export { rollupRag, resultToRag } from './services/classStatus';
+export { rollupRag, resultToRag, deriveClassState } from './services/classStatus';
 export { ClassGenerationService } from './services/ClassGenerationService';
 export { buildClassName } from './services/classNaming';
 export { hasUnassignedMandatory, isMandatoryField, isDataMethodUnassigned } from './services/fieldCompleteness';

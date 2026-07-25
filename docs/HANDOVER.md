@@ -67,6 +67,23 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
+**As of 2026-07-25 (SEED-2 + CLS-5 + CLS-6 + E2E-CAP-GET landed/verified, branch `develop`):**
+
+- **✅ `SEED-2` DONE** — see below (committed `9d6616e`).
+- **✅ `E2E-CAP-GET` committed** (`dc0bfeb`) — the 2026-07-23 one-line GET-branch fix was done but had
+  never been committed; now on `develop` with its bug-first test.
+- **✅ `CLS-5` — ALREADY SATISFIED (verified, no code change).** `RagStatus` is reachable from the
+  package index today via `index.ts` `export * from './models'` → `models/index.ts`
+  `export * from './classStatus'`. A `tsc` consumer `import type { RagStatus } from 'api2test-core'`
+  compiles with no explicit re-export line. The VS Code `ApiClassLibraryDto['status']` workaround was
+  unnecessary — clients can `import { RagStatus }` from the index. Doc-only commit `d4f9bb7`.
+- **✅ `CLS-6` DONE** — `deriveClassState(entry, hasCode)` lifted into `services/classStatus.ts`
+  (exported): `error` if `generationError` (wins over a stale file), else `generated` if `hasCode`, else
+  `pending`. **Vocabulary decision (user, 2026-07-25): canonical set = the batch
+  `ClassGenerationState` (`generated|pending|error|empty`)** — clients' `failed` folds into `error`;
+  `empty` stays batch-only (never derived). Bug-first, **214/214 green, build clean, `dist` rebuilt.**
+  Adoption: VS Code drops its `utils/classStatus.ts` `classGenerationState`; Desktop CLS-4 consumes it.
+
 **As of 2026-07-25 (SEED-2 landed):**
 
 - **✅ `SEED-2` DONE** — `PhotoUrls` (`List<string>`) + `Tags` (`List<object>`) added as curated

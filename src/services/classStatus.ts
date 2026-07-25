@@ -9,6 +9,7 @@
  * `RagStatus` (the user-set class status) lives in `models/classStatus.ts` and is re-exported here.
  */
 import { RagStatus } from '../models/classStatus';
+import type { ClassGenerationState } from './batchClassGeneration';
 
 export type { RagStatus };
 
@@ -29,4 +30,21 @@ export function rollupRag(statuses: string[]): RagStatus {
 /** An execution RESULT mapped onto the RAG palette: pass→green, fail→red, skip→amber, else grey. */
 export function resultToRag(result: string): RagStatus {
   return result === 'pass' ? 'green' : result === 'fail' ? 'red' : result === 'skip' ? 'amber' : 'grey';
+}
+
+/**
+ * CLS-6 — derive a Class Library entry's generation state ON DEMAND (not mid-batch), so both editions
+ * share one rule instead of each porting their own. A persisted `generationError` (set by a failed
+ * generate, cleared on success — CLS-2) wins as `error` even if a stale class file still exists; else
+ * `generated` when code has been produced (the caller supplies `hasCode` — e.g. a local class file
+ * exists), else `pending`.
+ *
+ * Vocabulary is reconciled onto the batch {@link ClassGenerationState} (`generated|pending|error|empty`):
+ * the clients' `failed` folds into `error`, and `empty` (no body to serialise) is a batch-time
+ * distinction only — never derivable from `(entry, hasCode)`, so this never returns it. Clients map the
+ * state → colour (error/red, generated/green, pending/amber).
+ */
+export function deriveClassState(entry: { generationError?: string }, hasCode: boolean): ClassGenerationState {
+  if (entry.generationError) return 'error';
+  return hasCode ? 'generated' : 'pending';
 }
