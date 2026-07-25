@@ -67,7 +67,19 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
-**As of 2026-07-25 (SEED-2 + CLS-5 + CLS-6 + #52 + E2E-CAP-GET landed/verified, branch `develop`):**
+**As of 2026-07-25 (E2E-SEL-1 + APIM-SEND-1 + RB-1/RB-4 core pieces landed, branch `develop`):**
+
+- **✅ `E2E-SEL-1` DONE** (`1866457`) — `services/e2eMethodSelection.ts` (exported):
+  `chooseSendMethod(verb, contentType)` and `chooseExtractMethod(responseField, verb)`, smart defaults only
+  (clients keep the full list). Extract returns the **method name only** — type stays with `E2E-CAP-1`, so
+  **not subsumed**; both ship. Sub-fix: TS seed brought to validator parity (4 `Validate…ResponseAsync`
+  added). Bug-first RED→GREEN for both helpers. **236/236 green, build clean.**
+- **✅ `APIM-SEND-1` DONE** (`0f2f1bb`) — send-method matrix completed (`PutFormAsync`, `PatchJsonAsync`,
+  `PatchFormAsync` in all 3 languages), the prerequisite for `chooseSendMethod`.
+- **✅ `RB-1`/`RB-3` DONE** (`24b332e`) — `dataMethodMatching.ts` (`orderDataMethodsForField`,
+  `sortDataMethodsByName`, shared `typeClass`; `DataDictionaryService` duplicate deleted).
+- **✅ `RB-4` core piece DONE** (`5c9d2cf`) — `ApiClassLibraryService.resyncClassFields`.
+- _Earlier this session (still current):_
 
 - **✅ `#52` DONE (guard added; already functionally fixed).** Integer ids were NOT widening to
   `decimal` — `DataDictionaryService` keeps `integer` distinct and `ClassGenerationService.getCSharpType`
