@@ -20,6 +20,16 @@ here affect both editions — note the coordinated version bump on any task that
   Bug-first: `test/dataMethodMatching.test.ts` — 2/6 shown **failing** on pre-fix stored-order, then green.
   **224/224 green, `tsc` build clean** (auto-match unregressed). VS Code's local RB-3 sort was rolled back;
   both editions now adopt the core helpers (VS Code `getDataMethodOptions.kind()` drop + Desktop lift).
+- [x] **RB-4 (core piece) — class-field re-sync in `ApiClassLibraryService`. DONE 2026-07-25 (`develop`).**
+  New `resyncClassFields(id, dictionaryFields)`: re-pulls the class's fields from the current Data
+  Dictionary (filtered by `sourceEndpointId === entry.endpointId`), rebuilds the stored snapshot and
+  persists — a **full re-sync** (assignment updated, new field added, removed field dropped). Per the
+  user's "reuse, don't add functionality" decision it shares the exact add-class population path — the
+  field-mapping was extracted to a private `toClassFields` used by both `addClass` and the re-sync; no
+  diff/merge logic. Returns the updated entry (`undefined` on unknown id). Bug-first:
+  `test/classFieldResync.test.ts` shown **failing** on a no-op re-sync, then green. **226/226, build clean.**
+  - **Adoption (clients):** the "Update & Generate" button = call `resyncClassFields` with
+    `getDataDictionary()`, then run the existing generate. Tabbed Edit-Class + Code tab is client UI only.
 - [x] **Dependabot npm PRs — DONE 2026-07-25 (applied on `develop`, verified one at a time).** All green,
   build clean + `npm test` 215/215 after each. Commits `e4fa193` (low-risk trio + CI Node) and `e7b1b39`
   (TS 7). GitHub PRs #6/#9/#10/#11/#12 target `main` and are **superseded** — close them (or let the

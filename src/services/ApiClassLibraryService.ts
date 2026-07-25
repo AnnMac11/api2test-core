@@ -50,20 +50,42 @@ export class ApiClassLibraryService {
             application: apiMethod.application,
             method: apiMethod.method,
             endpoint: apiMethod.endpoint,
-            fields: fields.map((f): ApiClassLibraryFieldDto => ({
-                fieldName: f.fieldName,
-                fieldType: f.fieldType,
-                mandatory: f.mandatory ?? false,
-                dataMethod: f.dataMethod || NOT_ASSIGNED,
-                dataMethodArgs: f.dataMethodArgs || '',
-                location: f.location || 'body'
-            })),
+            fields: this.toClassFields(fields),
             requestBodySchema: apiMethod.requestBodySchema || '',
             contentType: apiMethod.contentType || 'application/json',
             createdDate: new Date().toISOString()
         };
 
         await this.fileStorage.addItem('api-class-library.json', classEntry);
+    }
+
+    /**
+     * RB-4 — re-pull a class entry's fields from the current Data Dictionary and persist that fresh
+     * snapshot onto the entry. This is a **full re-sync**: fields new to the dictionary are added, changed
+     * `dataMethod`/type assignments are updated, and fields removed from the dictionary are dropped —
+     * because a class stores its own snapshot (see {@link addClass}) and the dictionary is the source of
+     * truth after the user assigns a newly-added data method.
+     *
+     * By design this REUSES the add-class population path exactly (filter by `sourceEndpointId` →
+     * {@link toClassFields}) rather than diffing/merging — the caller hands in the current dictionary
+     * (the same `getDataDictionary()` list both editions already load), and the method filters to this
+     * class's endpoint. "Update & Generate" = call this, then run the existing generate.
+     *
+     * @param id - The class entry to re-sync.
+     * @param dictionaryFields - The current Data Dictionary (unfiltered — filtered here by endpoint).
+     * @returns The updated entry, or `undefined` if no class has that id.
+     */
+    async resyncClassFields(
+        id: string,
+        dictionaryFields: DataDictionaryField[]
+    ): Promise<ApiClassLibraryDto | undefined> {
+        const entry = await this.getClassById(id);
+        if (!entry) { return undefined; }
+
+        const linked = dictionaryFields.filter(f => f.sourceEndpointId === entry.endpointId);
+        const updated: ApiClassLibraryDto = { ...entry, fields: this.toClassFields(linked) };
+        await this.updateClass(id, updated);
+        return updated;
     }
 
     /**
@@ -103,6 +125,23 @@ export class ApiClassLibraryService {
     }
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    /**
+     * Maps Data Dictionary fields to the class entry's stored field snapshot. Stores `mandatory`,
+     * `dataMethod`, args and location so the generator produces correctly typed, data-bound properties
+     * without re-querying the dictionary. Shared by {@link addClass} and {@link resyncClassFields} so the
+     * initial population and a later re-sync build the snapshot identically.
+     */
+    private toClassFields(fields: DataDictionaryField[]): ApiClassLibraryFieldDto[] {
+        return fields.map((f): ApiClassLibraryFieldDto => ({
+            fieldName: f.fieldName,
+            fieldType: f.fieldType,
+            mandatory: f.mandatory ?? false,
+            dataMethod: f.dataMethod || NOT_ASSIGNED,
+            dataMethodArgs: f.dataMethodArgs || '',
+            location: f.location || 'body'
+        }));
+    }
 
     /**
      * Generates a PascalCase C# class name from the application name and API name.
