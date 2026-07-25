@@ -119,7 +119,7 @@ test('Option 1: a captured value feeding a TYPED field is extracted in that nati
   const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
 
   // Captured in the native decimal type (no string→number conversion at the use site).
-  assert.match(code, /var petId = await ExtractField<decimal>\(response1, "id"\);/);
+  assert.match(code, /var petId = await ExtractFields<decimal>\(response1, "id"\);/);
   assert.match(code, /new PetStorePostStoreOrder\(\)\s*\{ PetId = petId \}/);
   assert.equal(/\.Parse\(petId\)/.test(code), false, 'no conversion at the assignment');
 });
@@ -143,6 +143,34 @@ test('a captured value used only in a URL stays the string extractor (no typing 
   const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
   assert.match(code, /var petId = await ExtractFieldFromResponse\(response1, "id"\);/);
   assert.equal(/ExtractField</.test(code), false);
+});
+
+test('E2E-CAP-1: a Class step\'s typed OUT capture rows each generate one ExtractFields<T> line, mapping the semantic type to the C# type (core processes the rows)', () => {
+  // New model: the user selects OUT rows (field · variable · store-as type) on the Class step; core turns
+  // each into a typed extract line reading that step's response. The client sends the EDITION-AGNOSTIC
+  // semantic type (`string`/`number`/`bool`/`Guid`) and core maps it to the concrete C# type — `number`
+  // becomes `decimal` (large ids exact + clean URLs), not the literal `number` (which is not a C# type).
+  const petCtx: E2EGenContext = {
+    methods,
+    classes: [
+      { className: 'PetStorePostPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json' },
+    ],
+  };
+  const row: E2ETestCaseRow = {
+    id: 'r', name: 'Typed captures', items: [
+      { type: 'Class', ref: 'PetStorePostPet', captures: [
+        { fieldPath: 'id', variable: 'petId', type: 'number' },
+        { fieldPath: 'status', variable: 'petStatus', type: 'string' },
+        { fieldPath: 'sold', variable: 'petSold', type: 'bool' },
+        { fieldPath: 'uuid', variable: 'petUuid', type: 'Guid' },
+      ] },
+    ],
+  };
+  const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
+  assert.match(code, /var petId = await ExtractFields<decimal>\(response1, "id"\);/, 'number → C# decimal');
+  assert.match(code, /var petStatus = await ExtractFields<string>\(response1, "status"\);/, 'string → C# string');
+  assert.match(code, /var petSold = await ExtractFields<bool>\(response1, "sold"\);/, 'bool → C# bool');
+  assert.match(code, /var petUuid = await ExtractFields<Guid>\(response1, "uuid"\);/, 'Guid → C# Guid');
 });
 
 test('framework selection switches attributes + usings', () => {

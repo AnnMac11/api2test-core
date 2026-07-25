@@ -24,6 +24,10 @@ export { ApiLibraryService } from './services/ApiLibraryService';
 export { ApiClassLibraryService } from './services/ApiClassLibraryService';
 export { ApiMethodLibraryService } from './services/ApiMethodLibraryService';
 export { DataDictionaryService, NOT_ASSIGNED, PARAMETER } from './services/DataDictionaryService';
+export {
+    typeClass, coarseKind, dataMethodKindLabel, orderDataMethodsForField, sortDataMethodsByName
+} from './services/dataMethodMatching';
+export type { TypeClass, CoarseKind, DataMethodOption } from './services/dataMethodMatching';
 export { DataLibraryService } from './services/DataLibraryService';
 export { DictionaryImportService } from './services/DictionaryImportService';
 export type { DictionaryImportResult, BatchImportResult, BatchImportItem } from './services/DictionaryImportService';

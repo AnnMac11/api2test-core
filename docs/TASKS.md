@@ -11,6 +11,15 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [x] **RB-1 / RB-3 — data-method matching + display order lifted to core. DONE 2026-07-25 (`develop`).**
+  New `services/dataMethodMatching.ts` (exported from `index.ts`) is the single source for field↔method
+  matching: `typeClass` (the fine 6-bucket classifier — `DataDictionaryService`'s private duplicate is
+  **deleted**, it now imports this one), `coarseKind`, `dataMethodKindLabel`, `orderDataMethodsForField`
+  (**RB-1**: matching-kind methods first, then every other method — nothing hidden — each group A–Z,
+  labelled `Name (kind)`; input not mutated) and `sortDataMethodsByName` (**RB-3**: Data Library grid A–Z).
+  Bug-first: `test/dataMethodMatching.test.ts` — 2/6 shown **failing** on pre-fix stored-order, then green.
+  **224/224 green, `tsc` build clean** (auto-match unregressed). VS Code's local RB-3 sort was rolled back;
+  both editions now adopt the core helpers (VS Code `getDataMethodOptions.kind()` drop + Desktop lift).
 - [x] **Dependabot npm PRs — DONE 2026-07-25 (applied on `develop`, verified one at a time).** All green,
   build clean + `npm test` 215/215 after each. Commits `e4fa193` (low-risk trio + CI Node) and `e7b1b39`
   (TS 7). GitHub PRs #6/#9/#10/#11/#12 target `main` and are **superseded** — close them (or let the
@@ -340,6 +349,57 @@ grouping — `groupIntoCalls`, `isSendMethod`, `stepIncomplete`, `friendlyMethod
     both editions' builders offer it, so both generate broken code today.
   - **Bug-first:** a GET → extract → use chain must pass the class's response variable to the extractor;
     shown failing on the current generator (`/* response */`), then passing.
+- [ ] **AGREED SPEC (user, 2026-07-25) — multi-row typed OUT capture, method `ExtractFields`.** Locks
+  E2E-SEL-1 + E2E-CAP-1 together. Confirmed in-thread:
+  - The OUT capture on a class step is a **list of rows**; the user adds one row per value to pull from
+    the response (bounded by the number of values available).
+  - Each row = **(1) response field · (2) variable name · (3) store-as type.**
+  - The **type is a user-chosen conversion target** — how the value should be STORED for a later class
+    whose field may want a different type — NOT the response's native type. The tool cannot infer it; the
+    user decides. `ExtractFields<T>` converts the raw response value to `T`.
+  - Generates **one typed line per row**, all reading the same `response`:
+    `var orderId = await ApiMethods.ExtractFields<int>(response, "id");`
+    `var orderStatus = await ApiMethods.ExtractFields<string>(response, "status");`
+  - Extractor **renamed `ExtractField` → `ExtractFields`** (all 3 languages).
+  - **Type required at Generate** — a row with an unset type blocks generation with an actionable message
+    (no silent `string` default).
+  - **SEL-1** auto-picks the send + extract method when a class is selected; the full method list stays so
+    a **custom** method is still selectable (smart default, not a restriction).
+  - Lives in **core** (row model + conversion + method + selection helpers); both editions call it.
+  - Build order: C# reference path first (bug-first), then TS + Python, then SEL-1 helpers. Adopt in
+    Desktop (drop client `extractRef`) + VS Code (RB-8).
+  - **CORE DONE 2026-07-25 (C# + TS, uncommitted on `develop` pending VS Code validation):** `captures[]`
+    on `E2ECaseItem`; `emitCaptures` in both C# (`E2ETestGenerationService`) and TS
+    (`generateE2ETestTypeScript`) emits one typed line per row from THIS step's response; extractor
+    renamed `ExtractField`→`ExtractFields` (C# `Convert.ChangeType`; TS runtime token conversion via
+    `ApiMethods.extractFields`). **Semantic→language mapping** added as one shared helper
+    `mapCaptureType(type, lang)` (`e2eCaseLogic.ts`): `number`→C# `decimal`/TS `number`,
+    `bool`/`boolean`→`bool`/`boolean`, `Guid`→`Guid`/`string`, `string`→`string`, concrete types pass
+    through. Bug-first tests: `e2eGenerator.test.ts` (asserts `<decimal>`/`<bool>`/`<Guid>` from semantic
+    input), `e2eTypeScript.test.ts` (incl. `Guid`→`string`). **218/218 green, build clean.** _Remaining:_
+    clients (VS Code RB-8/RB-5 multi-row typed OUT UI; Desktop drop `addOutputParam`→`captures[]`), then
+    SEL-1 helpers, then Python (PY-GEN-1).
+- [ ] **PY-GEN-1 — Python E2E + API-method generator in core (new, 2026-07-25, user-requested).** Core
+  today emits C# (`E2ETestGenerationService` / `generateApiMethodsCSharp`) and TS
+  (`generateE2ETestTypeScript` / `generateApiMethodsTypeScript`); **Python has no generator at all** —
+  `emitterFor('python')` throws. Net-new (NOT a "finish" item on the capture work). Scope:
+  1. **`generateApiMethodsPython`** — render the API Method Library as `api_methods.py`: an `ApiMethods`
+     class of static request wrappers (use `requests` or `httpx` — pick one, note it) that print the same
+     `##A2T_CALL##` markers the runner (`parseApiCalls`) extracts, mirroring the C#/TS `Reporter`.
+     Include the E2E-CAP-1 `extract_fields(response, field_path, as_)` with runtime store-as conversion
+     (`number`→`float`/`int`, `bool`→`bool`, `Guid`/`string`→`str`) — reuse the semantic type list.
+  2. **`generateE2ETestPython`** — turn one `E2ETestCaseRow` into a runnable **pytest** test: class-first
+     model (send verb from the class's HTTP method), captured vars flow into later steps, validators
+     assert. Mirror `generateE2ETestTypeScript` structure.
+  3. **`mapCaptureType(type, 'python')`** — extend the shared helper (`e2eCaseLogic.ts`) with the Python
+     column (`number`→`float`? confirm — Python has no `decimal` literal in the same way; likely `int`
+     for ids or `float`; **decide with the user**).
+  4. **Wire `emitterFor('python')`** + seed a `python` API-method library JSON
+     (`src/data/libraries/python/api-method-library.json`) — the C#/TS ones already exist.
+  5. Bug-first tests mirroring `e2eGenerator.test.ts` / `e2eTypeScript.test.ts`, compiling/running the
+     generated pytest where practical.
+  - **Edition impact:** Python is not consumed by VS Code (C#-only) or the current Desktop flows; it's a
+    new language target. Confirm the consumer/edition before adopting. Lives entirely in **core**.
 - [ ] **E2E-SEL-1 — Edition-neutral extract/send method selection (new, 2026-07-25).** Both clients
   need to **auto-select** which library methods a test-case step uses, and today that logic only exists
   (partly) inside Desktop's client (`e2eCaseLogic.ts` — `extractRef` finds a single extractor by shape).

@@ -11,8 +11,16 @@ export interface E2ECaseItem {
   type: E2ECaseType;
   /** The referenced method name or class name from the library. */
   ref: string;
-  /** Class steps: capture a field from this request's response into a variable for later steps. */
+  /** Class steps: capture a field from this request's response into a variable for later steps.
+   *  Legacy single-capture shape — superseded by {@link captures} (kept for back-compat). */
   capture?: { fieldPath: string; variable: string };
+  /** Class steps: OUT capture rows — each captures a response field into a variable, converted to the
+   *  user-chosen store-as `type` (e.g. `long`, `string`). The user decides the type because the value may
+   *  feed a later class field of a different type; it is not inferred. One typed extract line per row. */
+  captures?: Array<{ fieldPath: string; variable: string; type: string }>;
+  /** Method steps (extract): the user-chosen store-as type for a field extractor, so the generic typed
+   *  wrapper `ExtractFields<T>` is emitted with this T. Set by the client when expanding an OUT capture row. */
+  extractType?: string;
   /** Class steps: a previously-captured variable to substitute into the endpoint's {placeholder}. */
   pathBindVariable?: string;
   /** Method steps: endpoint path appended to the base URL for the method's url/urlTemplate argument. */

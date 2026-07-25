@@ -93,7 +93,7 @@ export function isSendMethod(methodParams: MethodParamMap, ref: string): boolean
 /** Friendly, plain display labels for the library methods (display ONLY — the underlying method name that
  *  drives code generation is unchanged). Keeps the builder readable: "ExtractField", "Validate 400", … */
 const METHOD_LABELS: Record<string, string> = {
-  ExtractFieldFromResponse: 'ExtractField',
+  ExtractFieldFromResponse: 'ExtractFields',
   ExtractTokenFromResponse: 'ExtractToken',
   ValidateResponseAsync: 'Validate 200/201',
   ValidateDeleteResponseAsync: 'Validate 200/204',
@@ -108,6 +108,29 @@ export function friendlyMethodName(ref: string): string {
   if (METHOD_LABELS[ref]) return METHOD_LABELS[ref];
   // Fallback for un-mapped methods: drop the noisy suffixes (…FromResponse / …ResponseAsync / …Async).
   return (ref || '').replace(/FromResponse$/, '').replace(/ResponseAsync$/, '').replace(/Async$/, '') || ref;
+}
+
+/**
+ * OUT-capture store-as types (E2E-CAP-1). The builder offers ONE edition-agnostic list — `string` (default),
+ * `number`, `bool`/`boolean`, `Guid` (no `object`/`array`, since captures feed URL `{}` parts and scalars) —
+ * and core maps each to the concrete language type the emitter needs.
+ *
+ * `number` → C# `decimal` (holds large integer ids exactly, unlike `double` past 2^53, and renders cleanly
+ * into a URL: `123`, not `123.0`) and TypeScript `number`. `Guid` has no distinct TS type, so it rides as
+ * `string`. Anything already concrete (e.g. `long`, `int`, `decimal` from the Option-1 look-ahead) passes
+ * through unchanged, so a power user's explicit type still works.
+ */
+export type CaptureLang = 'csharp' | 'typescript';
+export function mapCaptureType(type: string | undefined, lang: CaptureLang): string {
+  const t = (type || 'string').trim() || 'string';
+  switch (t.toLowerCase()) {
+    case 'number': return lang === 'csharp' ? 'decimal' : 'number';
+    case 'bool':
+    case 'boolean': return lang === 'csharp' ? 'bool' : 'boolean';
+    case 'guid': return lang === 'csharp' ? 'Guid' : 'string';
+    case 'string': return 'string';
+    default: return t; // already a concrete language type — pass through untouched
+  }
 }
 
 /** One call-row (#58): a send method + the class it sends (directly below) + follow-up extract/validate

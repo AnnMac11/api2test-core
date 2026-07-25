@@ -75,16 +75,22 @@ export function generateApiMethodsTypeScript(
     ts += otherMethods.map((m) => methodFromCode(m)).join('\n');
   }
 
-  // Typed field extraction — reads a dotted field path off the JSON body and returns it as T. TS keeps
-  // the value's native type automatically (a number stays a number), so no explicit conversion is needed.
+  // Typed field extraction (E2E-CAP-1) — reads a dotted field path off the JSON body and STORES it as the
+  // user-chosen type. TS erases generics, so the target type rides as a runtime token (\`number\`/\`string\`/
+  // \`boolean\`) and the value is converted, honouring the user's store-as choice even when it differs from
+  // the JSON's native type (e.g. a numeric id captured as a string for the next request's string field).
   ts += `  /**
-   * Read a response field by dotted path (e.g. \`data.id\`) and return it as T. The value keeps its
-   * native JSON type, so a captured id drops straight into a numeric request field with no conversion.
+   * Read a response field by dotted path (e.g. \`data.id\`) and convert it to \`as\` (\`number\`/\`string\`/
+   * \`boolean\`; defaults to string). The store-as type is the user's choice, not the JSON's native type.
    */
-  static async extractField<T>(response: Response, fieldPath: string): Promise<T> {
+  static async extractFields(response: Response, fieldPath: string, as: string = 'string'): Promise<any> {
     const data: unknown = await response.clone().json();
     const raw = fieldPath.split('.').reduce<any>((o, k) => (o == null ? o : o[k]), data);
-    return raw as T;
+    if (raw == null) { return raw; }
+    const t = (as || 'string').toLowerCase();
+    if (/(number|int|long|short|byte|decimal|double|float)/.test(t)) { return Number(raw); }
+    if (t.includes('bool')) { return String(raw).toLowerCase() === 'true'; }
+    return String(raw);
   }
 }
 

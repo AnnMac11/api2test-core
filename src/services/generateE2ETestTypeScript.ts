@@ -15,6 +15,7 @@
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, E2EGenContext } from '../models/E2EDto';
 import { librariesDir, classesDir, testsDir } from './generatedNamespaces';
 import { tsSymbol } from './tsNaming';
+import { mapCaptureType } from './e2eCaseLogic';
 
 interface GenState { lastResponse: string | null }
 
@@ -119,6 +120,25 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
   }
   state.lastResponse = respVar;
 
+  emitCaptures(item, respVar, lines);
+}
+
+/**
+ * OUT captures (E2E-CAP-1): the user's typed rows on a Class step — one `extractFields(resp, field, type)`
+ * line each, converting to the user's chosen store-as type. Core owns this; the client only supplies rows.
+ * Falls back to the legacy single untyped `capture` (string) when no typed rows are present.
+ */
+function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[]): void {
+  const rows = item.captures || [];
+  if (rows.length) {
+    for (const c of rows) {
+      const variable = c?.variable?.trim();
+      if (!variable || !c.fieldPath?.trim()) { continue; }
+      const type = mapCaptureType(c.type, 'typescript');
+      lines.push(`    const ${variable} = await ApiMethods.extractFields(${respVar}, ${JSON.stringify(c.fieldPath.trim())}, ${JSON.stringify(type)});`);
+    }
+    return;
+  }
   if (item.capture?.fieldPath && item.capture.variable) {
     lines.push(`    const ${item.capture.variable} = await ApiMethods.extractFieldFromResponse(${respVar}, ${JSON.stringify(item.capture.fieldPath)});`);
   }

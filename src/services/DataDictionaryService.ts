@@ -1,6 +1,7 @@
 import { DataDictionaryField } from '../models/DataDictionaryDto';
 import { DataMethodDto } from '../models/DataMethodDto';
 import { StorageProvider } from '../adapters/StorageProvider';
+import { typeClass } from './dataMethodMatching';
 
 /**
  * Sentinel value stored on a {@link DataDictionaryField} when no matching
@@ -385,8 +386,8 @@ export class DataDictionaryService {
         // (object→object, array→array, and scalars split by number/boolean/date/string). This stops an
         // object `address` field matching the scalar `Address()`, AND a number `id` field matching the
         // string `TaxId()` — a coarse object/array/scalar bucket used to allow that second mismatch.
-        const fieldClass = this.typeClass(field.fieldType);
-        const candidates = dataMethods.filter(dm => this.typeClass(dm.returnType) === fieldClass);
+        const fieldClass = typeClass(field.fieldType);
+        const candidates = dataMethods.filter(dm => typeClass(dm.returnType) === fieldClass);
         if (candidates.length === 0) { return undefined; }
 
         // Match on the LEAF segment of a dot-path (category.name â†’ "name"), singularising
@@ -434,20 +435,8 @@ export class DataDictionaryService {
         return undefined;
     }
 
-    /**
-     * Classifies a field type or a method return type into a matching class. Scalars are split into
-     * number / boolean / date / string (not lumped as one "scalar") so a numeric field never binds a
-     * string generator — e.g. a `number` `id` field must not match the string `TaxId()` method.
-     */
-    private typeClass(type: string): 'object' | 'array' | 'number' | 'boolean' | 'date' | 'string' {
-        const t = (type || '').toLowerCase().trim().replace(/\?/g, '');
-        if (t.includes('list<') || t.endsWith('[]') || t === 'array') { return 'array'; }
-        if (t.includes('dictionary') || t === 'object') { return 'object'; }
-        if (/^(number|integer|int|long|short|byte|sbyte|uint|ulong|ushort|decimal|double|float|single)$/.test(t)) { return 'number'; }
-        if (t === 'bool' || t === 'boolean') { return 'boolean'; }
-        if (t === 'date' || t === 'dateonly' || t === 'timespan' || t.includes('datetime')) { return 'date'; }
-        return 'string';
-    }
+    // Field/method type classification lives in the shared `typeClass` (./dataMethodMatching) so the
+    // Data Dictionary auto-match and the inline data-method dropdown use ONE classifier in both editions.
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

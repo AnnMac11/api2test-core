@@ -112,7 +112,7 @@ test('isSendMethod: true only for url/urlTemplate-taking wrappers', () => {
 });
 
 test('friendlyMethodName: maps known labels, strips suffixes otherwise', () => {
-  assert.equal(friendlyMethodName('ExtractFieldFromResponse'), 'ExtractField');
+  assert.equal(friendlyMethodName('ExtractFieldFromResponse'), 'ExtractFields');
   assert.equal(friendlyMethodName('ValidateBadRequestResponseAsync'), 'Validate 400');
   assert.equal(friendlyMethodName('SomethingCustomAsync'), 'SomethingCustom');
 });

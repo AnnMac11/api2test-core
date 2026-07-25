@@ -85,6 +85,25 @@ test('class-first chain: derived sends, captured field, path binding, validator'
   });
 });
 
+test('E2E-CAP-1 (TS): typed OUT capture rows each generate an extractFields(resp, field, type) line', () => {
+  // Same model as C#: the user picks OUT rows (field · variable · store-as type). TS erases generics, so
+  // the store-as type rides as a runtime token — extractFields converts to it, honouring the user's choice
+  // even when it differs from the JSON's native type (a number stored as a string, etc.).
+  const row: E2ETestCaseRow = {
+    id: 'r3', name: 'Typed captures',
+    items: [{ type: 'Class', ref: 'PetstorePostPet', captures: [
+      { fieldPath: 'id', variable: 'petId', type: 'number' },
+      { fieldPath: 'status', variable: 'petStatus', type: 'string' },
+      { fieldPath: 'uuid', variable: 'petUuid', type: 'Guid' },
+    ] }],
+  };
+  const code = generateE2ETestTypeScript(row, PAGE, CTX);
+  assert.match(code, /const petId = await ApiMethods\.extractFields\(response1, "id", "number"\);/, 'number → number');
+  assert.match(code, /const petStatus = await ApiMethods\.extractFields\(response1, "status", "string"\);/, 'string → string');
+  // TS has no Guid type — the store-as token maps to `string` so extractFields keeps it as a string.
+  assert.match(code, /const petUuid = await ApiMethods\.extractFields\(response1, "uuid", "string"\);/, 'Guid → string (TS)');
+});
+
 test('a POST class override becomes Object.assign with a type-aware value', () => {
   const row: E2ETestCaseRow = {
     id: 'r2', name: 'Create a named pet',

@@ -211,7 +211,7 @@ using Newtonsoft.Json;
         /// numeric request field with no conversion at the use site. Strings pass through unchanged; other
         /// scalars convert from the raw text using the invariant culture.
         /// </summary>
-        public static async Task<T> ExtractField<T>(HttpResponseMessage response, string fieldPath)
+        public static async Task<T> ExtractFields<T>(HttpResponseMessage response, string fieldPath)
         {
             var raw = await ExtractFieldFromResponse(response, fieldPath);
             var t = typeof(T);

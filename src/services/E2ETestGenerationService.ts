@@ -1,5 +1,6 @@
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, TestFramework, E2EGenContext } from '../models/E2EDto';
 import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
+import { mapCaptureType } from './e2eCaseLogic';
 
 /**
  * E2E test generation — turns an explicit, user-authored chain (E2ECaseItem[]) into a
@@ -121,6 +122,23 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
     lines.push(`        var ${respVar} = ${call};`);
     state.lastResponse = respVar;
   }
+
+  emitCaptures(item, respVar, lines);
+}
+
+/**
+ * OUT captures (E2E-CAP-1): the user's typed rows on a Class step, each capturing a response field into a
+ * variable converted to the user-chosen store-as `type`. Core owns this — the client only supplies the rows.
+ * One typed `ExtractFields<T>` line per row, reading THIS step's response (so later steps can use the value).
+ * The type is what the user selects (e.g. an id stored as `long`, a status as `string`); it is not inferred.
+ */
+function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[]): void {
+  for (const c of item.captures || []) {
+    const variable = c?.variable?.trim();
+    if (!variable) continue;
+    const type = mapCaptureType(c.type, 'csharp');
+    lines.push(`        var ${variable} = await ExtractFields<${type}>(${respVar}, "${(c.fieldPath || '').trim()}");`);
+  }
 }
 
 function argExpr(a?: { value: string; isVariable?: boolean }): string | null {
@@ -194,7 +212,7 @@ function methodStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenC
   // dropping into that field with no conversion. Everything else keeps the plain string extractor.
   const extractsField = params.some((p: string) => { const lp = p.toLowerCase(); return lp.includes('field') || lp.includes('path'); });
   const wantType = extractsField ? state.varTypes?.get(resultVar) : undefined;
-  const emitRef = wantType ? `ExtractField<${wantType}>` : item.ref;
+  const emitRef = wantType ? `ExtractFields<${wantType}>` : item.ref;
   const call = `${emitRef}(${args.join(', ')})`;
 
   lines.push(`        // Step ${n}: ${item.ref}`);
