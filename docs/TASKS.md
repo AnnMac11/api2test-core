@@ -293,20 +293,24 @@ the **result types** are Desktop-only. Bug-first per task; coordinate the versio
   and must NOT be baked into core.** VS Code runs in the **user's own open project** via Test Explorer /
   C# Dev Kit (no sandbox); Desktop runs in a **managed sandbox** + `dotnet test` + CI; Jira does **not
   execute** at all. So a single core orchestrator would impose Desktop's environment on everyone.
-  - **Core lifts ONLY the shared shapes:** `ExecResult` / `Execution` types (status pass/fail/skip,
-    durationMs, message, `calls[]`) from Desktop `execution-suites/types/execution.types.ts`, so the
-    editions agree on the result shape. The run **primitives already in core** stay the shared engine
-    (`runDotnetTest`/`runVitest`/`parseTrx`/`parseVitestJson`/`parseApiCalls` + `deployUnit` to a given
-    root).
+  - **✅ Shared shapes DONE 2026-07-26 (`develop`, with EXEC-2):** `models/execution.ts` —
+    `ExecResult` / `Execution` / `ExecResultStatus` + `ApiCall` (now single-sourced here; `TestRunnerService`
+    imports it, so the runner and the report never drift). Exported via `./models`. Only the shapes; the run
+    **primitives already in core** stay the shared engine (`runDotnetTest`/`runVitest`/`parseTrx`/
+    `parseVitestJson`/`parseApiCalls` + `deployUnit`). What remains OPEN below is orchestration = edition-side.
   - **Orchestration stays edition-side:** each edition wires deploy→run→parse for its own environment
     (VS Code: workspace/project + Test Explorer, which it already does; Desktop: sandbox + CI). VS Code
     only needs the result types **if/when** it shows results in-app (otherwise it keeps the Test-Explorer
     hand-off). Bug-first applies where the orchestration lives (in the edition), not here.
-- [ ] **EXEC-2 — branded run-report HTML builder.** Lift Desktop
-  `execution-suites/logic/runReport.ts` (`buildExecutionReportHtml(execution)`) into core (pure, no
-  DOM) so both editions render the same print-to-PDF report from an `Execution`. Colours come from the
-  CLS-3 result→RAG map (sequence after CLS-3, or inline a minimal map and swap later). Bug-first: pin
-  the report contains each row's status + calls for a known Execution.
+- [x] **EXEC-2 — branded run-report HTML builder. DONE 2026-07-26 (`develop`).** Lifted Desktop
+  `execution-suites/logic/runReport.ts` into core `services/runReport.ts` — `buildExecutionReportHtml(ex)`
+  returns one self-contained, inline-styled HTML doc (print-to-PDF): header meta, summary band
+  (totals/pass-rate/duration), and per-test breakdown with the full API call chain (verb/url/status +
+  request/response bodies). Colours inlined (minimal result/method/status map), no DOM, no theme dep.
+  Exported from `index.ts`. Bug-first: `test/runReport.test.ts` pins per-row status + call chain +
+  HTML-escaping; RED shown by dropping the results render (3/3 fail) → GREEN. **239/239, build clean.**
+  - **Adoption (clients):** Desktop drops its local `runReport.ts`, imports from core. VS Code renders the
+    report from an `Execution` if/when it surfaces run results in-app (else keeps the Test-Explorer hand-off).
 
 Note: the RAG rollup / impact-cascade tint on the Test Cases list is **CLS-3** above, not here.
 

@@ -113,6 +113,10 @@ export { responseFields } from './services/responseFields';
 // Smart-default method selection (E2E-SEL-1) — the send method a class step pre-selects from its verb +
 // content-type. A default only; the client keeps the full list. Shared so both editions agree.
 export { chooseSendMethod, chooseExtractMethod, isFormEncoded } from './services/e2eMethodSelection';
+// Branded run-report (EXEC-2) — one self-contained HTML doc (print-to-PDF) from an Execution. Shared so
+// both editions render the identical report.
+export { buildExecutionReportHtml } from './services/runReport';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
 export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
-export type { RawTestResult, BuildResult, ApiCall, VitestRun } from './services/TestRunnerService';
+export type { RawTestResult, BuildResult, VitestRun } from './services/TestRunnerService';
+// ApiCall + the Execution/ExecResult result shapes (EXEC-1) come from ./models (single-sourced).

@@ -15,3 +15,4 @@ export * from './UnifiedApiDto';
 export * from './ClassGenerationDto';
 export * from './E2EDto';
 export * from './classStatus';
+export * from './execution';

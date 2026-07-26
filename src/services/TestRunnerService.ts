@@ -8,14 +8,10 @@ import * as path from 'path';
  * keeps it gated off (no local filesystem). See the edition-gating notes.
  */
 
-/** One API call captured during a test — from the generated Reporter's `##A2T_CALL##` output. */
-export interface ApiCall {
-  method?: string;
-  url?: string;
-  requestBody?: string;
-  status?: number;
-  responseBody?: string;
-}
+// `ApiCall` is single-sourced in `models/execution` (captured Reporter request/response) so the runner and
+// the branded report never drift; re-exported here for back-compat with existing `TestRunnerService` imports.
+import type { ApiCall } from '../models/execution';
+export type { ApiCall };
 
 export interface RawTestResult {
   /** Bare method name (last segment of the fully-qualified test name). */
