@@ -1,6 +1,7 @@
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, TestFramework, E2EGenContext } from '../models/E2EDto';
 import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
 import { mapCaptureType } from './e2eCaseLogic';
+import { chooseSendMethod, chooseExtractMethod } from './e2eMethodSelection';
 
 /**
  * E2E test generation — turns an explicit, user-authored chain (E2ECaseItem[]) into a
@@ -88,12 +89,15 @@ function overrideComment(classItem: E2ECaseItem | undefined, ctx: E2EGenContext,
   return out;
 }
 
-function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenState, lines: string[]): void {
+function classStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenContext, state: GenState, lines: string[]): void {
   const cls = ctx.classes.find((c: any) => c.className === item.ref);
   const endpoint = cleanEndpoint(cls?.endpoint || '/');
   const httpMethod = (cls?.method || 'POST').toUpperCase();
-  const isForm = /x-www-form-urlencoded/i.test(cls?.contentType || '');
   const respVar = producedVar(item, n);
+  // Core owns the verb+content-type → send-method mapping (E2E-SEL-1). Deriving it here keeps GET/DELETE/
+  // POST/PUT/PATCH × json/form all correct from one source, instead of an inline block that had drifted
+  // (PATCH fell through to POST; a form-encoded PUT sent JSON).
+  const sendMethod = chooseSendMethod(httpMethod, cls?.contentType);
 
   // URL: bind every {placeholder} from the class's own `args` (In params), so a class-first row supports
   // multi-placeholder paths (e.g. /store/{storeId}/order/{orderId}). Fall back to the single legacy
@@ -107,23 +111,28 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
   lines.push(`        var url${n} = ${url};`);
 
   if (httpMethod === 'GET') {
-    lines.push(`        var ${respVar} = await GetAsync<object>(token, url${n});`);
+    lines.push(`        var ${respVar} = await ${sendMethod}<object>(token, url${n});`);
     state.lastResponse = respVar; // a GET response is capturable too (E2E-CAP-GET)
   } else if (httpMethod === 'DELETE') {
-    lines.push(`        var ${respVar} = await DeleteAsync(token, url${n});`);
+    lines.push(`        var ${respVar} = await ${sendMethod}(token, url${n});`);
     state.lastResponse = respVar;
   } else {
     overrideComment(item, ctx, state).forEach(c => lines.push(c));
     lines.push(`        var request${n} = new ${item.ref}()${classInitializer(item, ctx)};`);
-    const call =
-      httpMethod === 'PUT' ? `await PutJsonAsync(token, url${n}, request${n}.ToJson())`
-      : isForm ? `await PostFormAsync(token, url${n}, request${n}.ToFormBody())`
-      : `await PostJsonAsync(token, url${n}, request${n}.ToJson())`;
-    lines.push(`        var ${respVar} = ${call};`);
+    // `…FormAsync` serialises the request as a form body, everything else as JSON.
+    const body = /FormAsync$/.test(sendMethod) ? `request${n}.ToFormBody()` : `request${n}.ToJson()`;
+    lines.push(`        var ${respVar} = await ${sendMethod}(token, url${n}, ${body});`);
     state.lastResponse = respVar;
   }
 
-  emitCaptures(item, respVar, lines);
+  const capturedCount = emitCaptures(item, respVar, lines);
+  // Defaulted response method (E2E-SEL-1): the user's rule — "the response method is defaulted". If the step
+  // captured a field it has already extracted it; otherwise assert the call succeeded (DELETE → the 200/204
+  // validator, every other verb → the 200/201 validator). Core owns which validator, so all editions agree.
+  if (capturedCount === 0) {
+    const validate = chooseExtractMethod('', httpMethod); // no field → a Validate*ResponseAsync
+    lines.push(`        ${assertTrue(f, `await ${validate}(${respVar})`)}`);
+  }
 }
 
 /**
@@ -132,13 +141,16 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
  * One typed `ExtractFields<T>` line per row, reading THIS step's response (so later steps can use the value).
  * The type is what the user selects (e.g. an id stored as `long`, a status as `string`); it is not inferred.
  */
-function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[]): void {
+function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[]): number {
+  let emitted = 0;
   for (const c of item.captures || []) {
     const variable = c?.variable?.trim();
     if (!variable) continue;
     const type = mapCaptureType(c.type, 'csharp');
     lines.push(`        var ${variable} = await ExtractFields<${type}>(${respVar}, "${(c.fieldPath || '').trim()}");`);
+    emitted += 1;
   }
+  return emitted;
 }
 
 function argExpr(a?: { value: string; isVariable?: boolean }): string | null {
@@ -266,7 +278,7 @@ export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EG
     if (item.type === 'Class') {
       if (consumed.has(i)) return;
       n += 1;
-      classStep(item, n, ctx, state, steps);
+      classStep(item, n, f, ctx, state, steps);
     } else {
       n += 1;
       const next = items[i + 1];

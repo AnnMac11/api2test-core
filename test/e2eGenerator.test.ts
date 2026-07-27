@@ -76,6 +76,51 @@ test('class-first row (no send-method) emits each class call and binds URL place
   assert.equal(/var url\d+ = [^;]*\{/.test(code), false, 'no URL line leaves a placeholder unbound');
 });
 
+test('send method honours the full verb+content-type matrix (PATCH, PUT-form) — not just POST/PUT-json', () => {
+  // classStep derived the send call inline and had drifted from chooseSendMethod/the seed: PATCH fell
+  // through to POST, and PUT ignored form-encoding. A PATCH or a form-encoded PUT test case therefore
+  // generated the WRONG HTTP call (wrong verb / wrong body serialisation).
+  const verbClasses = [
+    { className: 'PatchJson', endpoint: '/thing/{id} (PATCH)', method: 'PATCH', contentType: 'application/json' },
+    { className: 'PatchForm', endpoint: '/thing/{id} (PATCH)', method: 'PATCH', contentType: 'application/x-www-form-urlencoded' },
+    { className: 'PutForm', endpoint: '/thing/{id} (PUT)', method: 'PUT', contentType: 'application/x-www-form-urlencoded' },
+  ];
+  const gen = (ref: string) => generateTestForRow(
+    { id: 'r', name: 'Verb', items: [{ type: 'Class', ref, args: { id: { value: '1' } } }] },
+    page, { methods, classes: verbClasses });
+
+  // PATCH must PATCH (json → .ToJson(), form → .ToFormBody()), never POST.
+  assert.match(gen('PatchJson'), /await PatchJsonAsync\(token, url1, request1\.ToJson\(\)\);/);
+  assert.match(gen('PatchForm'), /await PatchFormAsync\(token, url1, request1\.ToFormBody\(\)\);/);
+  // A form-encoded PUT must send form, not JSON.
+  assert.match(gen('PutForm'), /await PutFormAsync\(token, url1, request1\.ToFormBody\(\)\);/);
+});
+
+test('a Class step with no OUT capture emits the defaulted response validation (E2E-SEL-1 response default)', () => {
+  // The user's flow: "the user selects the out from the response. the response method is defaulted."
+  // When NO field is captured, the class step must still assert the call succeeded — DELETE →
+  // ValidateDeleteResponseAsync, any other verb → ValidateResponseAsync. classStep used to emit the send
+  // and then nothing, leaving the response un-asserted. When a field IS captured it extracts (no validate).
+  const valClasses = [
+    { className: 'PetPost', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json' },
+    { className: 'PetDelete', endpoint: '/pet/{petId} (DELETE)', method: 'DELETE' },
+  ];
+  const valCtx: E2EGenContext = { methods, classes: valClasses };
+  const row: E2ETestCaseRow = {
+    id: 'r', name: 'Create then delete pet', items: [
+      { type: 'Class', ref: 'PetPost', captures: [{ fieldPath: 'id', variable: 'petId', type: 'long' }] },
+      { type: 'Class', ref: 'PetDelete', args: { petId: { value: 'petId', isVariable: true } } },
+    ],
+  };
+  const code = generateTestForRow(row, { ...page, application: 'Pet' }, valCtx);
+
+  // Step 1 captured a field → it extracts and does NOT also emit a validate.
+  assert.match(code, /var petId = await ExtractFields<long>\(response1, "id"\);/);
+  assert.equal(/ValidateResponseAsync\(response1\)/.test(code), false, 'a captured step must not also validate');
+  // Step 2 captured nothing → it must default to the DELETE validation on its own response.
+  assert.match(code, /Assert\.IsTrue\(await ValidateDeleteResponseAsync\(response2\)\);/);
+});
+
 test('a capture after a GET reads the GET response (E2E-CAP-GET)', () => {
   // "GET a resource, capture a field from it, use that in the next call" is an ordinary chain. The
   // GET branch of classStep used to leave `state.lastResponse` unset, so the extract step emitted
