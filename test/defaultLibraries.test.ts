@@ -7,7 +7,7 @@ import {
 } from '../src/data/defaultLibraries';
 
 test('csharp libraries return the canonical built-in sets', () => {
-  assert.equal(getDefaultDataLibrary('csharp').length, 97);
+  assert.equal(getDefaultDataLibrary('csharp').length, 98);
   assert.equal(getDefaultApiMethodLibrary('csharp').length, 26);
 });
 
@@ -71,13 +71,13 @@ test('every validator chooseExtractMethod can pick exists in all 3 languages', (
 test('accessors hand out fresh copies (mutation does not leak)', () => {
   const a = getDefaultDataLibrary('csharp');
   a.pop();
-  assert.equal(getDefaultDataLibrary('csharp').length, 97);
+  assert.equal(getDefaultDataLibrary('csharp').length, 98);
 });
 
 test('python libraries mirror the csharp set (same methods, Python bodies)', () => {
   const py = getDefaultDataLibrary('python');
   const cs = getDefaultDataLibrary('csharp');
-  assert.equal(py.length, 97);
+  assert.equal(py.length, 98);
   assert.equal(getDefaultApiMethodLibrary('python').length, 26);
   // same methodNames (auto-matching parity), but Python code bodies
   assert.deepEqual(py.map((m) => m.methodName).sort(), cs.map((m) => m.methodName).sort());
@@ -95,8 +95,10 @@ test('data library includes the per-type Parameter placeholders (#56)', () => {
     assert.match(byName['ParameterInt']?.code || '', /99999/, `${lang}: ParameterInt returns 99999`);
     assert.equal(byName['ParameterDate']?.returnType, 'DateTime', `${lang}: ParameterDate is a DateTime`);
     assert.match(byName['ParameterDate']?.code || '', /1900/, `${lang}: ParameterDate returns 1900-01-01`);
-    // boolean is deliberately omitted — no ParameterBool.
-    assert.ok(!byName['ParameterBool'] && !byName['ParameterBoolean'], `${lang}: no boolean placeholder`);
+    // A boolean url param is rare but must still bind SOMETHING (an unmatched mandatory field blocks class
+    // generation), so a false-returning placeholder completes the type set. The runtime value overwrites it.
+    assert.equal(byName['ParameterBool']?.returnType, 'bool', `${lang}: ParameterBool is a bool`);
+    assert.match(byName['ParameterBool']?.code || '', /false/i, `${lang}: ParameterBool returns false`);
   }
 });
 
@@ -115,7 +117,7 @@ test('mergeDefaults adds missing defaults and preserves user items', () => {
   // user's custom method survives, FirstName is not duplicated, the rest are added
   assert.ok(merged.includes(userCustom), 'user custom preserved');
   assert.equal(merged.filter((m: any) => m.methodName === 'FirstName').length, 1, 'no duplicate');
-  assert.equal(merged.length, 97 + 1, 'all defaults present plus the one custom');
+  assert.equal(merged.length, 98 + 1, 'all defaults present plus the one custom');
 });
 
 test('every seeded base-path / token method is attached to an application by id', () => {
@@ -143,5 +145,5 @@ test('every seeded base-path / token method is attached to an application by id'
 test('mergeDefaults returns the same array when nothing is missing', () => {
   const defaults = getDefaultDataLibrary('csharp');
   const merged = mergeDefaults(defaults, defaults);
-  assert.equal(merged.length, 97);
+  assert.equal(merged.length, 98);
 });

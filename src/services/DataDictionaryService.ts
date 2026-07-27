@@ -355,10 +355,18 @@ export class DataDictionaryService {
         fields: DataDictionaryField[],
         dataMethods: DataMethodDto[]
     ): DataDictionaryField[] {
-        return fields.map(field => ({
-            ...field,
-            dataMethod: this.findBestMatch(field, dataMethods)?.methodName ?? NOT_ASSIGNED
-        }));
+        return fields.map(field => {
+            // URL parameters (path/query) carry a value supplied at RUN TIME, not a generated one, so they
+            // must bind the type-matched Parameter* placeholder regardless of the field's own name. We reuse
+            // findBestMatch unchanged — only the match-name is swapped to `parameter`, so its type filter
+            // still narrows to the field's class and its name tiers then pick ParameterInt/String/Date/Bool.
+            const isUrlParam = field.location === 'path' || field.location === 'query';
+            const forMatch = isUrlParam ? { ...field, fieldName: 'parameter' } : field;
+            return {
+                ...field,
+                dataMethod: this.findBestMatch(forMatch, dataMethods)?.methodName ?? NOT_ASSIGNED
+            };
+        });
     }
 
     /**

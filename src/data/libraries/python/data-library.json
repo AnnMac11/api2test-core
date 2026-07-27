@@ -1163,5 +1163,17 @@
     "isCustom": false,
     "project": null,
     "comments": null
+  },
+  {
+    "id": "param-bool",
+    "methodName": "ParameterBool",
+    "returnType": "bool",
+    "description": "Placeholder for a runtime-supplied boolean parameter (value set by the test, not generated).",
+    "code": "def parameter_bool(self) -> bool:\n    return False",
+    "parameters": "",
+    "createdDate": "2026-07-27T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": null
   }
 ]
