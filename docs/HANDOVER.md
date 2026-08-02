@@ -67,6 +67,90 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
+**As of 2026-08-02 (`OVR-CASE` FIXED — both emitters; branch `develop`):**
+
+- **✅ `OVR-CASE` DONE.** Overrides are keyed by the **spec field name** (correct at rest); the mapping to
+  the generated property is now done at emit, by the same rule the class emitter uses:
+  - **C#** — `formatPropertyName` lifted out of `ClassGenerationService` into `services/classNaming.ts`
+    as exported **`csPropertyName`** (the service delegates). `classInitializer` maps every override key
+    through it for the assigned name, the `csTypeOf` lookup, and the pinned-fields note. So
+    `pet_id → PetId`, and the type is found, so `PetId = 5` is no longer quoted.
+  - **TypeScript** — the opposite rule, and it had the same bypass: generated TS keeps the **raw JSON
+    key**, quoted when it isn't a valid identifier, but the initializer didn't quote — `{ pet-id: … }`
+    against a class declaring `'pet-id'`. `propKey` moved into `tsNaming.ts` as exported **`tsPropKey`**,
+    now used by the request-class emitter *and* the initializer. `tsTypeOf`'s regex escaped as well.
+  - **Python: not affected** — no Python emitter exists (PY-1 parked); only its seed libraries.
+  - **Bug-first:** `test/overrides.test.ts` was the guard that should have caught it and didn't — it
+    keyed overrides `Email`/`Age`, already PascalCase, so the mapping was never exercised. Re-keyed to
+    the real client shape + a snake_case case, plus a non-identifier case in `test/e2eTypeScript.test.ts`
+    (strict-`tsc` compiled). **4 RED → green. Build clean, 260/260.**
+  - **Edition impact: BOTH.** Coordinated version bump on adoption. VS Code's paired `RB-21` (un-skip the
+    pending assertion in `src/test/suite/e2eThreeStepChain.test.ts`) is now **ready to action**; Desktop
+    gets the same fix for free but should re-run any test that pins a field.
+  - **Deliberately not done:** a UI validator for the *casing* — it would mean re-implementing C# and TS
+    naming in every client. A client-side check for **orphaned** pins and **type-mismatched values** is
+    the useful half and is edition work. See `TASKS.md` → `OVR-CASE` (Done).
+
+**As of 2026-08-01 (raised from VS Code — nothing landed in core yet; superseded by the entry above):**
+
+- **🔴 `OVR-CASE` OPEN, and it breaks the build of any test that pins a field.** Found reviewing a
+  three-class PetStore chain generated from the VS Code Test Case builder (add pet → create order →
+  delete order). `classInitializer` ([E2ETestGenerationService.ts:68](../src/services/E2ETestGenerationService.ts:68))
+  emits the override key verbatim — `new PetStoreCreateOrder() { petId = petId, status = "placed" }` —
+  but `ClassGenerationService.formatPropertyName` PascalCases every property, so the class declares
+  `PetId` / `Status`. C# is case-sensitive: the generated test does not compile whenever a pinned
+  field's spec name is not already PascalCase (`petId`, `pet_id`, `shipDate`). Same cause makes
+  `csTypeOf` miss (case-sensitive regex), so every override falls back to `string` and a numeric
+  literal comes out quoted. **Fix at emit** — share `formatPropertyName` with the generator; clients
+  are right to key overrides by field name. Full entry + bug-first plan in `TASKS.md` → `OVR-CASE`.
+  - **Edition impact: BOTH.** Desktop and VS Code use the same generator and the same override shape,
+    so both ship broken today and both need the version bump when it lands.
+  - The rest of the chain checked out: captures thread correctly (pet id → order body, order id →
+    delete URL), verb → send-method mapping is right, and the chain needs no API Method Library at all.
+  - **Paired re-review:** `RB-21` in [`../Api2TestVS/docs/TASKS.md`](../../Api2TestVS/docs/TASKS.md) —
+    un-skip the pending assertion in `src/test/suite/e2eThreeStepChain.test.ts` on delivery.
+
+**As of 2026-07-30 (LIC-6 landed — sat uncommitted until 2026-08-02, committed then):**
+
+- **✅ `LIC-6` DONE** — the licence **presentation** policy is now core's, not each client's.
+  `manager.ts` decides *what* the access is; `src/licensing/presentation.ts` decides *what the user is
+  told about it*: `WARN_WITHIN_DAYS` (7), `daysUntil`, `accessDaysLeft`, `accessWarns`, `licenceSummary`
+  → `LicenceSummary {text,hint,warn,canRemove}`, `nudgeFor` → `Nudge {key,message,kind}`,
+  `describeAccess`. All pure with an injectable `now`; all exported from `index.ts`. **Rendering stays
+  client-side** — core supplies strings + flags, the client picks status bar / toast / page section.
+  13 tests on a fixed `NOW` pin the counts, the shared threshold, the once-only welcome→d7→d1 schedule,
+  singular "1 day", urgency-beats-welcome, "licence ends" ≠ "trial", and that `expired` nudges nothing.
+  - **Edition impact: BOTH.** VS Code adopted it the same day; **Desktop has NOT** — its licence panel
+    still duplicates this wording and will drift. That adoption is the open half.
+
+**As of 2026-07-27 (two generator/dictionary fixes, both raised from VS Code):**
+
+- **✅ E2E send-method routing fixed** (`b2b0fa7`) — a Class step was still selecting its send method
+  inline, so PATCH mis-generated as `PostJson` and a form-encoded PUT as `PutJson`. Now routed through
+  `chooseSendMethod(verb, contentType)` (E2E-SEL-1), so the full verb × content-type matrix comes from
+  one source. Same commit: a standalone Class step with **no OUT capture** now emits the defaulted
+  response validation (`DELETE` → `ValidateDeleteResponseAsync`, else `ValidateResponseAsync`) instead
+  of nothing at all.
+- **✅ URL-param binding fixed** (`46ddd57`) — a path/query field imported as `NOT_ASSIGNED`, so a
+  mandatory one tripped `hasUnassignedMandatory` and **blocked class generation for bodyless
+  endpoints**. URL values are supplied at run time, so `autoMatchDataMethods` now matches a path/query
+  field against the name `parameter` (its real type is unchanged), reusing `findBestMatch`'s type filter
+  + name tiers to pick `ParameterInt/String/Date/Bool`. Added `ParameterBool` (`=> false`) to the csharp
+  and python seed libraries to complete the type set — **seed count 97→98**.
+  - **Edition impact: BOTH** — same generator, same dictionary. Recorded in the VS Code handover as the
+    "2026-07-27 core lifts".
+
+**As of 2026-07-26 (EXEC series, `06e5edd`, branch `develop`):**
+
+- **✅ `EXEC-2` DONE** — Desktop's branded run-report lifted into `services/runReport.ts`:
+  `buildExecutionReportHtml(ex)` returns one self-contained inline-styled HTML doc (print-to-PDF) —
+  header meta, summary band, per-test breakdown with the full API call chain.
+- **✅ `EXEC-1` shared shapes DONE** (the task stays open for its edition-side half) —
+  `models/execution.ts`: `ExecResult` / `Execution` / `ExecResultStatus` + `ApiCall`, now single-sourced
+  here and imported by `TestRunnerService`, so runner and report can't drift. Exported via `./models`.
+  - **Orchestration is deliberately NOT in core** (edition-boundary decision, 2026-07-17): core owns the
+    primitives + the shapes; each edition wires deploy→run→parse for its own environment.
+
 **As of 2026-07-25 (E2E-SEL-1 + APIM-SEND-1 + RB-1/RB-4 core pieces landed, branch `develop`):**
 
 - **✅ `E2E-SEL-1` DONE** (`1866457`) — `services/e2eMethodSelection.ts` (exported):

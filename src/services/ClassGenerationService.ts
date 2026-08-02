@@ -3,6 +3,7 @@ import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGener
 import { NOT_ASSIGNED, PARAMETER } from './DataDictionaryService';
 import { StorageProvider } from '../adapters/StorageProvider';
 import { classesNs, librariesNs } from './generatedNamespaces';
+import { csPropertyName } from './classNaming';
 
 /**
  * Generates C# request-body classes from API Class Library entries.
@@ -400,13 +401,9 @@ ${lines.join('\n')}
         }
     }
 
+    /** Delegates to the shared rule (`csPropertyName`) so the E2E emitter names the same property. */
     private formatPropertyName(name: string): string {
-        return name
-            .replace(/[-_.\s]+/g, ' ')
-            .split(' ')
-            .filter(Boolean)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join('');
+        return csPropertyName(name);
     }
 
     private generateId(): string {

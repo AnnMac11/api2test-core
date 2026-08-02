@@ -2,6 +2,7 @@ import { E2EPage, E2ETestCaseRow, E2ECaseItem, TestFramework, E2EGenContext } fr
 import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
 import { mapCaptureType } from './e2eCaseLogic';
 import { chooseSendMethod, chooseExtractMethod } from './e2eMethodSelection';
+import { csPropertyName } from './classNaming';
 
 /**
  * E2E test generation — turns an explicit, user-authored chain (E2ECaseItem[]) into a
@@ -63,7 +64,13 @@ function classInitializer(item: E2ECaseItem | undefined, ctx: E2EGenContext): st
   const code = (ctx.classes.find((c: any) => c.className === item!.ref)?.classCode) || '';
   const parts = Object.entries(ov)
     .filter(([, v]) => v && v.value !== '' && v.value != null)
-    .map(([prop, v]) => `${prop} = ${overrideValue(v as { value: string; isVariable?: boolean }, csTypeOf(code, prop))}`);
+    .map(([field, v]) => {
+      // OVR-CASE: overrides are keyed by the SPEC field name; the class declares the PascalCased
+      // property. Map through the generator's own rule — both the name we assign and the name we look
+      // the declared type up by, or a numeric override silently falls back to `string` and gets quoted.
+      const prop = csPropertyName(field);
+      return `${prop} = ${overrideValue(v as { value: string; isVariable?: boolean }, csTypeOf(code, prop))}`;
+    });
   return parts.length ? ` { ${parts.join(', ')} }` : '';
 }
 
@@ -83,7 +90,9 @@ function overrideComment(classItem: E2ECaseItem | undefined, ctx: E2EGenContext,
     state.tipShown = true;
   }
   const pinned = classItem.overrides
-    ? Object.keys(classItem.overrides).filter(k => (classItem.overrides as any)[k]?.value !== '' && (classItem.overrides as any)[k]?.value != null)
+    ? Object.keys(classItem.overrides)
+        .filter(k => (classItem.overrides as any)[k]?.value !== '' && (classItem.overrides as any)[k]?.value != null)
+        .map(csPropertyName) // name them as the generated code names them
     : [];
   if (pinned.length) out.push(`        // Fields pinned for this test: ${pinned.join(', ')}.`);
   return out;

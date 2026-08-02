@@ -11,6 +11,54 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [ ] **APP-ID-IMPORT — import never sets `applicationId`, so imported data is name-linked only.**
+  Raised from VS Code 2026-07-29 (user asked whether the app-id link works; it doesn't, in practice).
+  Two holes on the import path:
+  1. `ApiLibraryService` import stores the application **name** on each `ApiMethodDto` and leaves
+     `applicationId` undefined — even though the model documents the id as the authoritative link
+     ([ApiMethodDto.ts:37](../src/models/ApiMethodDto.ts:37)) and APP-1 `basePathOptions`/`tokenOptions`
+     filter on it.
+  2. `ApiClassLibraryService.addClass` ([:46](../src/services/ApiClassLibraryService.ts:46)) builds the
+     class entry with no `applicationId`, and `DictionaryImportService.importApis` creates every class
+     through it — so classes made at import are name-linked whatever the caller knows.
+  - **Fix:** carry the id end-to-end — import resolves the app once and stamps `applicationId` on each
+    method; `addClass` copies `apiMethod.applicationId` onto the class entry. Both editions then get a
+    rename-proof link for free (VS Code's wrapper stamps it today, but only on the one-at-a-time path).
+  - **Bug-first test:** import a spec for an app, rename the app, and assert the endpoints and their
+    classes still resolve to it.
+  - **Paired re-review task** in `../Api2TestVS/docs/TASKS.md` under **RB-9**: on the next core
+    delivery, re-verify imported methods + classes carry the id and drop the VS Code-side stamping if
+    it's then redundant.
+  - **Edition impact:** Desktop has the same gap (same import path), so deploy folders/namespaces there
+    also fall back to the name.
+- [ ] **APP-SCOPE-2 — app scoping helpers for the Test Cases page (classes + sole-app default).**
+  Raised from VS Code 2026-07-29 (RB-10: put a Desktop-style application selector on the Test Cases
+  page). `methodScope.ts` scopes **methods** by app id, but the same page needs to scope **classes** to
+  the selected app and to auto-select when the user has exactly one app — Desktop does both inline in
+  `TestCasesPage.tsx` (`sameApp`, `soleApplication`), so the rule is duplicated per edition and will
+  drift.
+  - **Fix:** lift `sameApp`/`soleApplication` and a class-by-app filter into `methodScope.ts` (or a
+    sibling `appScope.ts`), preferring `applicationId` with a name fallback — and depending on
+    **APP-ID-IMPORT** for the id to actually be there.
+  - **Edition impact:** Desktop deletes its local copies; VS Code consumes rather than re-implements.
+- [ ] **RB-6/CORE — the shipped demo applications don't use the ids the seeded methods link to.**
+  Raised from VS Code 2026-07-29. `resources/data/applications.json` numbers its demo apps `1..4`, but
+  the curated `src/data/libraries/*/api-method-library.json` links methods to `applicationId`
+  `"app-petstore"` / `"app-stripe"`. Nothing resolves: on a clean install the app-scoped base-path and
+  token dropdowns (APP-1 `basePathOptions`/`tokenOptions`) come up empty for PetStore and Stripe,
+  because the filter matches on `applicationId`.
+  - **Fix:** give the shipped applications the same stable slug ids the seed already uses
+    (`app-petstore`, `app-stripe`, and slugs for the rest) — the seed library is the harder thing to
+    change, so the apps move. Positional ids re-number as apps are added/removed and will break the
+    links again.
+  - **Bug-first test:** assert every `applicationId` on a seeded API method resolves to a shipped
+    application, reading the real seed + real applications file (not hand-made rows). The equivalent
+    test in VS Code (`src/test/suite/shippedAppIds.test.ts`) shows the shape; core's existing
+    `defaultLibraries.test.ts` is the natural home.
+  - **VS Code already fixed its own copy** (2026-07-29, branch `sp1-1-deploy-via-core`) so the extension
+    isn't blocked. **Paired re-review task** is filed in `../Api2TestVS/docs/TASKS.md` under RB-6:
+    on the next core delivery, re-verify the two seeds agree and drop any VS Code-side divergence.
+  - **Edition impact:** Desktop ships the same seed → same empty dropdowns on a clean install.
 - [x] **APIM-SEND-1 — complete the send-method matrix (verb × content-type). DONE 2026-07-25 (`develop`).**
   Prep for `E2E-SEL-1`'s `chooseSendMethod`: a form-encoded PUT, and PATCH (json + form), had no library
   method to select (only `PostForm`/`PostJson`/`PutJson` existed). Added **`PutFormAsync`,
@@ -549,6 +597,19 @@ editions — coordinate the version bump. Bug-first per task.
   drop plan/features; 3 test files rewritten (removals listed in `../api2test/docs/TASKS.md`
   Phase 4). VS Code: SP4-1b/c — `licenseService` onto the manager, delete `featureEnabled` gates.
   Their old imports (`hasFeature`, `FREE_ENTITLEMENT`, `.plan`) no longer exist in core.
+- [x] **LIC-6 — the licence PRESENTATION policy moves into core. DONE 2026-07-30.**
+  `manager.ts` decided WHAT the access is; what the user is TOLD about it was still a VS Code copy
+  (day counts, the 7-day warning threshold, the welcome/d7/d1 reminder schedule, the wording) — all
+  commercial decisions Desktop would otherwise have reinvented and drifted from. New
+  `src/licensing/presentation.ts` (pure, `now` injectable): `WARN_WITHIN_DAYS`, `daysUntil`,
+  `accessDaysLeft`, `accessWarns`, `licenceSummary` → `LicenceSummary {text,hint,warn,canRemove}`,
+  `nudgeFor` → `Nudge {key,message,kind}`, `describeAccess`; all exported from `index.ts`. Rendering
+  stays client-side — core supplies the strings and the flags, the client decides status bar vs toast
+  vs page section. New `test/licensePresentation.test.ts` (13, fixed `NOW`) pins the counts, the
+  shared threshold, the once-only schedule, singular "1 day", urgency-beats-welcome, that an expiring
+  **licence** says "licence ends" not "trial", and that `expired` nudges nothing. Build clean,
+  **258/258 green**. Adoption: VS Code done same day (see `../Api2TestVS/docs/TASKS.md`);
+  **Desktop still to adopt** — its licence panel duplicates this wording.
 
 ### TypeScript emitters (TS-C series) — added 2026-07-16
 
@@ -704,6 +765,42 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
+
+- [x] **OVR-CASE — a pinned field addressed the raw field name, not the generated property, so the test
+  did not compile. DONE 2026-08-02 (`develop`).** Found 2026-08-01 reviewing a three-class PetStore chain
+  from the VS Code builder (add pet → create order → delete order).
+  - **Was emitted:** `new PetStoreCreateOrder() { petId = petId, status = "placed" }` against a class
+    declaring `public decimal PetId` / `public string Status`. C# is case-sensitive, so any pinned field
+    whose spec name was not already PascalCase (`petId`, `pet_id`, `shipDate`, …) was a compile error.
+    Second symptom, same cause: `csTypeOf` looked the property up case-sensitively, missed, and fell back
+    to `string` — so a numeric literal came out quoted (`PetId = "5"`).
+  - **Root cause:** `classInitializer` used the override KEY verbatim. Clients key overrides by the spec
+    field name, which is **correct at rest** (it is what the spec says, and it survives a change of target
+    language) — the mapping to the property name belongs at emit.
+  - **Fix (C#):** `formatPropertyName` moved out of `ClassGenerationService` into
+    `services/classNaming.ts` as exported **`csPropertyName`**; the service now delegates to it, and
+    `classInitializer` maps every override key through it — for the assigned name, for the `csTypeOf`
+    lookup, and for the "Fields pinned for this test" note. Shared, not copied, so the two can't drift.
+  - **Fix (TS half, found while scoping this):** the TS emitter has the **opposite** rule — the property
+    name IS the raw JSON key, quoted when it isn't a valid JS identifier — and the same bypass:
+    `classConstruct` didn't quote, so a header-style field (`pet-id`, `Content-Type`) emitted
+    `{ pet-id: … }` against a class declaring `'pet-id'` — a syntax error. `propKey` moved into
+    `tsNaming.ts` as exported **`tsPropKey`**, used by both the request-class emitter and the
+    initializer. `tsTypeOf`'s regex is now escaped too (a `pet.id` field matched loosely).
+  - **Python: not affected** — `python` is in `TargetLanguage` but there is no Python emitter (only seed
+    data libraries); PY-1 is still parked. Nothing to change.
+  - **Bug-first:** `test/overrides.test.ts` was the test that should have caught it and didn't — it keyed
+    its overrides `Email`/`Age`, already PascalCase, so it never exercised the mapping. Re-keyed to the
+    real client shape (`email`/`age`) + a new snake_case case (`pet_id` → `PetId = 5` unquoted); new
+    non-identifier case in `test/e2eTypeScript.test.ts` (strict-`tsc`-compiled, as that suite does).
+    **4 cases RED on the old code → all green.** Build clean, **260/260** (was 258).
+  - **Edition impact: BOTH** — same generator, same override shape. Coordinated version bump on adoption.
+  - **Paired re-review** in [`../Api2TestVS/docs/TASKS.md`](../../Api2TestVS/docs/TASKS.md) as **RB-21**:
+    un-skip the pending assertion in `src/test/suite/e2eThreeStepChain.test.ts` and re-run the chain.
+  - **Follow-up NOT done here (deliberate, agreed 2026-08-02):** a UI-side validator for override
+    *values* — an orphaned pin (field gone after re-import) and a value that can't parse as the field's
+    type. Those are authoring-time problems emit can't see; the casing is not one, and must not be
+    re-implemented per client. Filed edition-side, not here.
 
 - [x] **CI actions → node24 runtimes** (2026-07-13): checkout/setup-node v5 (`391d673`), then Dependabot
   majors merged — codeql-action 4 (PR #1), checkout 7 (PR #2), setup-node 6 (PR #3). CI green.

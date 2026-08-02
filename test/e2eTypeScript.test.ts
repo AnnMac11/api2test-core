@@ -113,3 +113,25 @@ test('a POST class override becomes Object.assign with a type-aware value', () =
   assert.match(code, /const request1 = Object\.assign\(new PetstorePostPet\(\), \{ name: "Rex" \}\);/);
   assertCompiles(code, 'Petstore', { PetstorePostPet: 'export class PetstorePostPet { name: string = ""; toJson(): string { return ""; } }\n' });
 });
+
+// OVR-CASE (TS half): the request-class emitter keeps the raw JSON key as the property name and QUOTES it
+// when it is not a valid JS identifier. The initializer must go through the same rule, or a header-style
+// field (`pet-id`, `Content-Type`) emits `{ pet-id: … }` — a syntax error against a class declaring `'pet-id'`.
+test('a pinned field whose name is not a valid identifier is quoted, as the class declares it', () => {
+  const ctx: E2EGenContext = {
+    ...CTX,
+    classes: [{
+      className: 'PetstorePostPet', endpoint: '/pet', method: 'POST', contentType: 'application/json',
+      classCode: "export class PetstorePostPet { 'pet-id': number = 0; name: string = ''; toJson(): string { return ''; } }",
+    }],
+  };
+  const row: E2ETestCaseRow = {
+    id: 'r3', name: 'Create a pet with a hyphenated field',
+    items: [{ type: 'Class', ref: 'PetstorePostPet', overrides: { 'pet-id': { value: '7' }, name: { value: 'Rex' } } }],
+  };
+  const code = generateE2ETestTypeScript(row, PAGE, ctx);
+  assert.match(code, /Object\.assign\(new PetstorePostPet\(\), \{ 'pet-id': 7, name: "Rex" \}\);/);
+  assertCompiles(code, 'Petstore', {
+    PetstorePostPet: "export class PetstorePostPet { 'pet-id': number = 0; name: string = ''; toJson(): string { return ''; } }\n",
+  });
+});

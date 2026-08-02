@@ -16,7 +16,7 @@
 import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGenerationDto';
 import { NOT_ASSIGNED, PARAMETER } from './DataDictionaryService';
 import { librariesDir, classesDir } from './generatedNamespaces';
-import { tsSymbol } from './tsNaming';
+import { tsSymbol, tsPropKey as propKey } from './tsNaming';
 
 const isFormEncoded = (ct?: string) => (ct || '').toLowerCase().includes('x-www-form-urlencoded');
 
@@ -121,11 +121,6 @@ function hasAssignedMethod(field: FieldConfiguration): boolean {
     && field.dataMethod.trim() !== ''
     && field.dataMethod !== NOT_ASSIGNED
     && field.dataMethod !== PARAMETER);
-}
-
-/** A field name usable as-is, or quoted when it isn't a valid JS identifier (keeps the exact JSON key). */
-function propKey(name: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : `'${name.replace(/'/g, "\\'")}'`;
 }
 
 function tsType(type: string): string {

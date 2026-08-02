@@ -14,7 +14,7 @@
  */
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, E2EGenContext } from '../models/E2EDto';
 import { librariesDir, classesDir, testsDir } from './generatedNamespaces';
-import { tsSymbol } from './tsNaming';
+import { tsSymbol, tsPropKey } from './tsNaming';
 import { mapCaptureType } from './e2eCaseLogic';
 
 interface GenState { lastResponse: string | null }
@@ -63,7 +63,9 @@ function buildUrlWithPathArgs(endpoint: string, item?: E2ECaseItem): string {
 
 /** Find a property's declared TS type in the generated class code (defaults to string). */
 function tsTypeOf(classCode: string, prop: string): string {
-  const m = (classCode || '').match(new RegExp(`\\b${prop}\\s*[?!]?\\s*:\\s*([A-Za-z]+)`));
+  // Escaped: a field name may carry regex metacharacters (`pet.id`), which would otherwise match loosely.
+  const escaped = prop.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+  const m = (classCode || '').match(new RegExp(`\\b${escaped}'?\\s*[?!]?\\s*:\\s*([A-Za-z]+)`));
   return m ? m[1] : 'string';
 }
 
@@ -81,7 +83,9 @@ function classConstruct(ref: string, item: E2ECaseItem | undefined, ctx: E2EGenC
   const code = (ctx.classes.find((c: any) => c.className === ref)?.classCode) || '';
   const parts = Object.entries(ov || {})
     .filter(([, v]) => v && v.value !== '' && v.value != null)
-    .map(([prop, v]) => `${prop}: ${overrideValue(v as any, tsTypeOf(code, prop))}`);
+    // OVR-CASE (TS half): quote the key exactly as the class emitter declared it — the type is still
+    // looked up by the raw field name, which is what the property is called.
+    .map(([field, v]) => `${tsPropKey(field)}: ${overrideValue(v as any, tsTypeOf(code, field))}`);
   return parts.length ? `Object.assign(new ${ref}(), { ${parts.join(', ')} })` : `new ${ref}()`;
 }
 
