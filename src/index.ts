@@ -57,6 +57,12 @@ export type { Entitlement, EntitlementClaims } from './licensing/entitlements';
 export { verifyEntitlement, UNLICENSED, LICENSE_PUBLIC_KEY } from './licensing/entitlements';
 export type { TokenStore, TrialStore, TrialData, AccessState, Access, LicenseManager } from './licensing/manager';
 export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
+// How that access is put to the user (LIC-6) — day counts, the warning threshold, the reminder
+// schedule and the wording. Policy, so it is shared; rendering stays in each client.
+export type { LicenceSummary, Nudge } from './licensing/presentation';
+export {
+  WARN_WITHIN_DAYS, daysUntil, accessDaysLeft, accessWarns, licenceSummary, nudgeFor, describeAccess,
+} from './licensing/presentation';
 
 // deployUnit (DEP-1) — the one code path that deploys a complete compilable unit (libraries +
 // tests + referenced classes) into a target project, parameterised by emitter + layout. Clients
