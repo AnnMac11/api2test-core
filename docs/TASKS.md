@@ -11,6 +11,91 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [ ] **TYPE-1 — a captured value assigned to a typed field doesn't compile (CS0266), and the fix has to
+  work for all three languages.** Raised from VS Code 2026-08-03, hit as a **real compile error** the
+  first time Execute actually built the sandbox (RB-22): a 3-step PetStore chain captures `id` from
+  `AddPet` and pins it onto `PlaceOrder.PetId`, generating
+
+  ```csharp
+  var petid = await ExtractFields<decimal>(response1, "id");
+  var request2 = new PetStorePlaceOrder() { PetId = petid };   // error CS0266: decimal → int?
+  ```
+
+  **Two causes, both in this repo:**
+  1. **The capture type and the destination type are chosen independently.** The OUT capture's type is a
+     coarse user pick (`string`/`number`/`bool`/`Guid`) and `number` always becomes C# `decimal`
+     ([e2eCaseLogic.ts:127](../src/services/e2eCaseLogic.ts:127)) — chosen to hold large ids exactly.
+     The destination is whatever the spec declared, here `int?`. Nothing reconciles them.
+  2. **A variable override is emitted verbatim.** `overrideValue`
+     ([E2ETestGenerationService.ts:50](../src/services/E2ETestGenerationService.ts:50)) returns
+     `v.value` unchanged when `isVariable`, discarding the destination type it was just handed.
+
+  **Blocker for PY-1 — `csTypeOf` finds the destination type by regexing the generated C# source**
+  (`public\s+(Type)\s+Prop`, [E2ETestGenerationService.ts:43](../src/services/E2ETestGenerationService.ts:43)).
+  That is unportable by construction: it cannot work for Python and barely works for TypeScript. Any fix
+  built on it is C#-only.
+
+  **Fix, in dependency order:**
+  1. **Read the destination type from the class model, not the emitted text** — `ApiClassLibraryFieldDto`
+     already carries it, language-neutrally. Everything else depends on this.
+  2. **Expose a per-language display type**, so a client can show the user the type the generated code
+     will actually declare — `int?` (C#) / `number` (TS) / `int` (Python) — for a request field, a
+     response field, and a path placeholder alike. The per-language maps already exist
+     (`ClassGenerationService` for C#, `generateRequestClassTypeScript` for TS); this only needs one
+     exported entry point over them. **The language is fixed at first run and cannot be changed
+     afterwards** (user, 2026-08-03), so the concrete type can be stored as well as displayed — there is
+     no later language switch to invalidate it. Clients enforce that lock; see VS Code **RB-24**.
+  3. **Add `coerce(expr, fromType, toType)` to the `CodeEmitter` interface.** Core compares the two
+     **abstract** types and decides a conversion is needed; each emitter renders it — C# `(int?)x` /
+     `x.ToString()` / `int.Parse(x)`, TS `Number(x)` / `String(x)` (usually a no-op), Python `int(x)` /
+     `str(x)`. Language knowledge stays in the adapters, where the rest of it already is.
+  4. **Own `CAPTURE_TYPES`.** The list is duplicated in VS Code
+     ([e2eBuilderData.ts:193](../../Api2TestVS/src/webviews/e2eBuilderData.ts:193)) and Desktop
+     (`ui-browser/.../logic/captureRows.ts:30`), even though the comment at
+     [e2eCaseLogic.ts:114](../src/services/e2eCaseLogic.ts:114) calls it "ONE edition-agnostic list".
+     Python would make a third copy.
+
+  **Bug-first test:** generate the PetStore add-pet → place-order chain with the id captured as `number`
+  and pinned onto an `int?` field, and assert the emitted assignment converts. It must fail on today's
+  emitter. Repeat per language once the emitter seam is in.
+
+  **Edition impact:** Desktop generates through the same service and ships the identical defect — any
+  test case that threads a captured id into a typed field fails to build there too. It has simply been
+  invisible in VS Code until now, because Execute never actually compiled anything (RB-22).
+
+  **Paired re-review task** in `../Api2TestVS/docs/TASKS.md` under **RB-23**.
+
+- [ ] **CAP-CORE — the OUT-capture row logic is duplicated in both editions; lift it here.** Raised by
+  the user 2026-08-03 while filing **TYPE-1** ("create a task to remove the duplicate methods, and fix in
+  the core"). TYPE-1 step 4 covers only the `CAPTURE_TYPES` list — the whole module is duplicated, under
+  **different names**, which is why the drift has gone unnoticed:
+
+  | Desktop `ui-browser/.../logic/captureRows.ts` | VS Code `src/webviews/e2eBuilderData.ts` |
+  | --- | --- |
+  | `CAPTURE_TYPES` (:30) | `CAPTURE_TYPES` (:193) |
+  | `migrateCaptures` (:65) | `collapseCaptures` (:254) |
+  | `validateCaptures` (:107) | `captureTypeError` (:244) |
+  | `captureIncomplete` / `stepCapturesIncomplete` (:33, :38) | folded into `captureTypeError` |
+  | `CaptureRow` (:18) | inline on `E2ECaseItem` |
+
+  Same rules in both — a row is incomplete without a variable and a type, a legacy single `capture`
+  migrates to a typed OUT row, Generate blocks while any row is untyped. Two implementations means a fix
+  to one is a silent regression in the other, and **Python would make a third copy**.
+
+  - **Fix:** one `captureRows.ts` here, keeping the clearer name from each pair, exported through the
+    package index. Both editions delete their copy and import it. The store-as list goes with it
+    (TYPE-1 step 4 — do these together, they touch the same lines).
+  - **Watch for real divergence while lifting**, don't paper over it: VS Code's `collapseCaptures` takes
+    a `methodParams` map and folds a legacy `ExtractFieldFromResponse` **method step** back onto its
+    class; Desktop's `migrateCaptures` has the same signature but the two have been maintained
+    separately. Diff the behaviour before picking one — the surviving version must handle every case
+    both did, and the migration path is what opens a user's existing saved test cases.
+  - **Bug-first test:** a case saved under the legacy single-`capture` shape opens with a typed OUT row,
+    asserted once here, replacing the two per-edition tests
+    (`../api2test/tests/unit/captureRows.test.ts`, `../Api2TestVS/src/test/suite/e2eBuilderData.test.ts`).
+  - **Edition impact:** both editions delete code; neither changes behaviour. Paired re-review tasks:
+    VS Code **RB-25**, Desktop **E2E-CAP-LIFT**.
+
 - [ ] **APP-ID-IMPORT — import never sets `applicationId`, so imported data is name-linked only.**
   Raised from VS Code 2026-07-29 (user asked whether the app-id link works; it doesn't, in practice).
   Two holes on the import path:
