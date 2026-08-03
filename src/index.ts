@@ -38,6 +38,9 @@ export type { ClassGenerationState, ClassGenerationOutcome, BatchGenerateResult 
 export { rollupRag, resultToRag, deriveClassState } from './services/classStatus';
 export { ClassGenerationService } from './services/ClassGenerationService';
 export { buildClassName } from './services/classNaming';
+// TYPE-1: the one stored-type → declared-type map. Both class emitters delegate to it, so a client can
+// show the user the exact type the generated code will declare (C# `int`, TS `number`, Python `int`).
+export { fieldDisplayType } from './services/fieldTypes';
 export { hasUnassignedMandatory, isMandatoryField, isDataMethodUnassigned } from './services/fieldCompleteness';
 export type { CompletableField } from './services/fieldCompleteness';
 export { TestGenerationService } from './services/TestGenerationService';
