@@ -863,6 +863,34 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
 
+- [x] **RUN-TRX — every local C# run reported "dotnet test produced no TRX", even when the tests passed.
+  DONE 2026-08-03 (`develop`).** Raised from VS Code 2026-08-03: the user ran Execute twice and got
+  `Failed to execute test: dotnet test produced no TRX.` both times — once on a run whose output said
+  `Failed! - Failed: 1, Passed: 0` and once on `Passed! - Failed: 0, Passed: 1`. The pass proved the
+  runner, not the test, was broken.
+  - **Cause:** the scaffolded sandbox is `<Project Sdk="MSTest.Sdk/3.6.4">`, which runs on
+    **Microsoft.Testing.Platform**, not VSTest. `runDotnetTest` passed VSTest's
+    `--logger trx;LogFileName=results.trx`; MTP has no such logger, ignored it, and wrote no TRX. The
+    runner then read the missing file as "the build failed before any test ran" and reported that instead
+    — hiding a green run entirely, and hiding the real assertion message of a red one.
+  - **Fix:** [TestRunnerService.ts](../src/services/TestRunnerService.ts) —
+    `usesTestingPlatform(projectPath)` reads the project file (`Sdk="MSTest.Sdk…"`, with
+    `<EnableMSTestRunner>` winning where it is explicit; unreadable ⇒ VSTest, the old behaviour), and
+    `dotnetTestArgs(...)` builds the command line for whichever platform it is: MTP gets
+    `-- --report-trx --report-trx-filename results.trx --results-directory <dir>` (options after `--` go
+    to the test app, which is where MTP reads them), VSTest keeps exactly the arguments it always had.
+    `--filter` goes on the matching side of the `--`, so running a single case still runs a single case.
+  - **Bug-first test:** [test/dotnetRunnerArgs.test.ts](../test/dotnetRunnerArgs.test.ts) — 6 tests,
+    **all 6 fail** against the single-shape `args` (the functions don't exist), all pass after. Suite
+    269 → **275 passing**. Verified end-to-end against the user's real sandbox: the MTP command writes
+    `results.trx`, `parseTrx` reads it back as `TestPet / Passed / 433ms` with the captured API call, and
+    a bogus `--filter` matches 0 tests (so the filter is honoured, not ignored).
+  - **Edition impact:** both editions share this runner, so **both** were affected — Desktop's local
+    runner is broken in exactly the same way against any MSTest.Sdk project and is fixed by taking this
+    bump. The csproj template itself lives in each client (VS Code:
+    `src/services/sandboxScaffold.ts`), so the fix had to work on sandboxes that already exist — it does,
+    nothing is regenerated.
+
 - [x] **CAP-TYPE — the store-as picker offers the chosen language's own types. DONE 2026-08-03
   (`develop`).** User, after testing the TYPE-1 fix: *"I select the addpet class, the out parameter
   id(decimal) but I can only assign number, the issue is the next class is placeOrder the petId(int)"* —

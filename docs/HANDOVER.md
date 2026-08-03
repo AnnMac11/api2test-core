@@ -67,6 +67,28 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
+**As of 2026-08-03 (`TYPE-1` C#, `CAP-TYPE`, `RUN-TRX` — branch `develop`, 275 passing):**
+
+- **Three fixes, all raised by the VS Code user running a real PetStore chain end to end.** Each ships to
+  **both** editions; VS Code has taken all three (0.2.32 / 0.2.33), **Desktop has taken none of them.**
+  - **`TYPE-1` (C# only).** `emitCaptures` now prefers `state.varTypes` — the destination field's type —
+    over the store-as pick, and the look-ahead passes `csPropertyName(prop)` so it stops silently
+    resolving to `'string'`. Steps 1 & 3 remain open (read the type from the class model instead of
+    regexing generated C#; add `coerce` to `CodeEmitter`), and until then
+    `generateE2ETestTypeScript.ts` still calls the old 3-arg `emitCaptures` — **the fix is C#-only**.
+  - **`CAP-TYPE`.** `captureTypes(language)` in `services/fieldTypes.ts` — the store-as picker offers
+    concrete per-language types, which pass through `mapCaptureType` untouched. **Desktop impact:** its
+    own `CAPTURE_TYPES` (`ui-browser/.../logic/captureRows.ts`) is now a duplicate; its picker stays
+    abstract until **CAP-CORE**.
+  - **`RUN-TRX`.** `runDotnetTest` passed VSTest's `--logger trx;…` to a Microsoft.Testing.Platform
+    project, so no TRX was ever written and **every** local C# run — passing ones included — was
+    reported as a build failure. `usesTestingPlatform` + `dotnetTestArgs` now pick the command line per
+    platform. **Desktop impact: this was broken there too, identically**, for any `MSTest.Sdk` project;
+    taking the bump fixes it with no client change.
+- **Structural note worth carrying forward:** the sandbox `.csproj` template lives in the **clients**
+  (VS Code: `src/services/sandboxScaffold.ts`), the runner lives **here**, and they have to agree about
+  the test platform. Nothing enforces that — RUN-TRX is what it looks like when they drift.
+
 **As of 2026-08-02 (`OVR-CASE` FIXED — both emitters; branch `develop`):**
 
 - **✅ `OVR-CASE` DONE.** Overrides are keyed by the **spec field name** (correct at rest); the mapping to
