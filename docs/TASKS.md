@@ -63,11 +63,9 @@ here affect both editions — note the coordinated version bump on any task that
      **abstract** types and decides a conversion is needed; each emitter renders it — C# `(int?)x` /
      `x.ToString()` / `int.Parse(x)`, TS `Number(x)` / `String(x)` (usually a no-op), Python `int(x)` /
      `str(x)`. Language knowledge stays in the adapters, where the rest of it already is.
-  4. **Own `CAPTURE_TYPES`.** The list is duplicated in VS Code
-     ([e2eBuilderData.ts:193](../../Api2TestVS/src/webviews/e2eBuilderData.ts:193)) and Desktop
-     (`ui-browser/.../logic/captureRows.ts:30`), even though the comment at
-     [e2eCaseLogic.ts:114](../src/services/e2eCaseLogic.ts:114) calls it "ONE edition-agnostic list".
-     Python would make a third copy.
+  4. ~~**Own `CAPTURE_TYPES`.**~~ **DONE 2026-08-03 as CAP-TYPE** (see Done) — core now owns the list as
+     `captureTypes(language)`, keyed by language rather than abstract, and VS Code's copy is deleted.
+     Desktop still has its own (`ui-browser/.../logic/captureRows.ts:30`) — adoption goes with **CAP-CORE**.
 
   **Bug-first test:** generate the PetStore add-pet → place-order chain with the id captured as `number`
   and pinned onto an `int?` field, and assert the emitted assignment converts. **Done for C#** (see FIXED
@@ -86,7 +84,7 @@ here affect both editions — note the coordinated version bump on any task that
 
   | Desktop `ui-browser/.../logic/captureRows.ts` | VS Code `src/webviews/e2eBuilderData.ts` |
   | --- | --- |
-  | `CAPTURE_TYPES` (:30) | `CAPTURE_TYPES` (:193) |
+  | `CAPTURE_TYPES` (:30) | ~~`CAPTURE_TYPES`~~ — lifted here as `captureTypes(language)` (CAP-TYPE, 2026-08-03) |
   | `migrateCaptures` (:65) | `collapseCaptures` (:254) |
   | `validateCaptures` (:107) | `captureTypeError` (:244) |
   | `captureIncomplete` / `stepCapturesIncomplete` (:33, :38) | folded into `captureTypeError` |
@@ -864,6 +862,27 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
+
+- [x] **CAP-TYPE — the store-as picker offers the chosen language's own types. DONE 2026-08-03
+  (`develop`).** User, after testing the TYPE-1 fix: *"I select the addpet class, the out parameter
+  id(decimal) but I can only assign number, the issue is the next class is placeOrder the petId(int)"* —
+  then *"as we are working in C# I would like to see all the C# type options in the dropdown"*.
+  - **Was:** one abstract list, `string / number / bool / Guid`, mapped to the language on the way out.
+    A C# workspace chaining an id into an `int?` field had no `int` to pick, only `number` (→ `decimal`).
+    The generated code was already right (TYPE-1 takes the destination field's type), but the UI said
+    otherwise — and where nothing constrains the capture, the pick is all there is.
+  - **Fix:** `captureTypes(language)` in [fieldTypes.ts](../src/services/fieldTypes.ts), next to
+    `fieldDisplayType` — C# `string/int/long/decimal/double/bool/Guid/DateTime`, TS
+    `string/number/boolean`, Python `str/int/float/bool`. Concrete types, so `mapCaptureType` passes them
+    through untouched: what is picked is what is declared. The old abstract values still map as they did,
+    so saved cases regenerate unchanged.
+  - **Bug-first test:** [test/fieldTypes.test.ts](../test/fieldTypes.test.ts) — the two new CAP-TYPE tests
+    fail (`captureTypes is not a function`, 5/7) before the function exists and pass after; one asserts
+    every offered type survives `mapCaptureType` as itself, one that a case holding the old `number`
+    still maps to `decimal`. Suite 266 → **269 passing**.
+  - **Edition impact:** VS Code consumed it the same day (**CAP-TYPE**, commit on `sp1-1-deploy-via-core`)
+    and **deleted** its local `CAPTURE_TYPES` and `storeAsFor`. Desktop still has its own copy — it picks
+    this up with **CAP-CORE**, and until it does its picker stays abstract.
 
 - [x] **OVR-CASE — a pinned field addressed the raw field name, not the generated property, so the test
   did not compile. DONE 2026-08-02 (`develop`).** Found 2026-08-01 reviewing a three-class PetStore chain

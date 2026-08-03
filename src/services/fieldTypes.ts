@@ -48,3 +48,30 @@ export function fieldDisplayType(type: string | undefined, language: TargetLangu
       return language === 'python' ? 'str' : 'string';
   }
 }
+
+/**
+ * The types a client offers in the OUT row's "store as" picker, for the language the workspace is
+ * locked to (CAP-TYPE).
+ *
+ * It used to be one abstract list — `string / number / bool / Guid` — mapped to the language on the way
+ * out. That hid the only thing the user is actually choosing: a C# workspace chaining an id into an
+ * `int?` field had no `int` to pick, only `number` (→ `decimal`). The generator now takes the
+ * destination field's type where there is one, but the picker still has to be honest about what it
+ * stores when nothing constrains it.
+ *
+ * These are concrete types, so they pass through `mapCaptureType` untouched — what is picked is what is
+ * declared. The old abstract values still map as they always did, so saved cases keep generating.
+ *
+ * Order is deliberate: the common pick first, then widening. Not every language type is here — this is
+ * the set that a value read out of a JSON response can sensibly be stored as.
+ */
+export function captureTypes(language: TargetLanguage): string[] {
+  switch (language) {
+    case 'csharp':
+      return ['string', 'int', 'long', 'decimal', 'double', 'bool', 'Guid', 'DateTime'];
+    case 'python':
+      return ['str', 'int', 'float', 'bool'];
+    default:
+      return ['string', 'number', 'boolean'];
+  }
+}
