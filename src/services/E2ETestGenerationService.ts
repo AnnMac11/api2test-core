@@ -134,7 +134,7 @@ function classStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenCo
     state.lastResponse = respVar;
   }
 
-  const capturedCount = emitCaptures(item, respVar, lines);
+  const capturedCount = emitCaptures(item, respVar, lines, state);
   // Defaulted response method (E2E-SEL-1): the user's rule — "the response method is defaulted". If the step
   // captured a field it has already extracted it; otherwise assert the call succeeded (DELETE → the 200/204
   // validator, every other verb → the 200/201 validator). Core owns which validator, so all editions agree.
@@ -148,14 +148,20 @@ function classStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenCo
  * OUT captures (E2E-CAP-1): the user's typed rows on a Class step, each capturing a response field into a
  * variable converted to the user-chosen store-as `type`. Core owns this — the client only supplies the rows.
  * One typed `ExtractFields<T>` line per row, reading THIS step's response (so later steps can use the value).
- * The type is what the user selects (e.g. an id stored as `long`, a status as `string`); it is not inferred.
+ * The type is what the user selects (e.g. an id stored as `long`, a status as `string`) — unless a later step
+ * pins the variable onto a typed field, in which case that field's type wins (TYPE-1, see below).
  */
-function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[]): number {
+function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[], state: GenState): number {
   let emitted = 0;
   for (const c of item.captures || []) {
     const variable = c?.variable?.trim();
     if (!variable) continue;
-    const type = mapCaptureType(c.type, 'csharp');
+    // TYPE-1: where the variable is later pinned onto a request field, that field's declared type wins over
+    // the store-as pick. The pick is deliberately coarse (`number` → `decimal`, which holds large ids
+    // exactly), so pinning a captured id onto an `int?` produced `decimal` → `int?` and would not compile
+    // (CS0266). The look-ahead that knows the destination already exists for method steps; it just never
+    // reached these rows. With no typed destination the user's pick still governs.
+    const type = state.varTypes?.get(variable) || mapCaptureType(c.type, 'csharp');
     lines.push(`        var ${variable} = await ExtractFields<${type}>(${respVar}, "${(c.fieldPath || '').trim()}");`);
     emitted += 1;
   }
@@ -266,7 +272,11 @@ export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EG
     for (const [prop, v] of Object.entries(it.overrides)) {
       const ov = v as { value: string; isVariable?: boolean };
       if (!ov?.isVariable || !ov.value) continue;
-      const t = csTypeOf(code, prop);
+      // Overrides are keyed by the SPEC field name (`petId`, `pet_id`); the class declares the PascalCase
+      // property (`PetId`). Looking up the raw key never matched, so this silently resolved to `string` and
+      // the whole look-ahead was discarded below — the same OVR-CASE mismatch already fixed in the
+      // initializer, missed here.
+      const t = csTypeOf(code, csPropertyName(prop));
       if (t && t.toLowerCase() !== 'string') varTypes.set(ov.value, t);
     }
   }

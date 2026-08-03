@@ -62,6 +62,46 @@ test('OVR-CASE: a snake_case pinned field addresses the PascalCase property, and
   assert.match(code, /Fields pinned for this test: PetId, Status, Complete\./);
 });
 
+// TYPE-1: the exact chain a user ran on 2026-08-03, which failed to build with
+//   error CS0266: Cannot implicitly convert type 'decimal' to 'int?'
+// The OUT row stored the pet id as `number` (→ `decimal`, chosen to hold large ids exactly) and the next
+// step pinned it onto `PetId`, declared `int?` by the spec. The capture must take the type of the field it
+// is going to feed — that is what the Option-1 look-ahead is for, but it never reached the capture rows.
+test('TYPE-1: a captured value pinned onto a typed field is captured in THAT type', () => {
+  const chain = [
+    {
+      className: 'PetStoreAddPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json',
+      classCode: 'public string Name { get; set; }',
+    },
+    {
+      className: 'PetStorePlaceOrder', endpoint: '/store/order (POST)', method: 'POST', contentType: 'application/json',
+      classCode: 'public int? PetId { get; set; } public string Status { get; set; }',
+    },
+  ];
+  // Class-only rows: core derives the send method from the verb + content-type, so this is the shape the
+  // builder actually saves (and the shape that produced the failing file).
+  const row: any = { id: 'r5', name: 'Add pet then order', items: [
+    { type: 'Class', ref: 'PetStoreAddPet', captures: [{ fieldPath: 'id', variable: 'petid', type: 'number' }] },
+    { type: 'Class', ref: 'PetStorePlaceOrder', overrides: { petId: { value: 'petid', isVariable: true } } },
+  ] };
+
+  const code = generateTestForRow(row, page, { methods, classes: chain } as any);
+
+  assert.match(code, /var petid = await ExtractFields<int\?>\(/,
+    'the capture must take the destination field\'s type, or the assignment below cannot compile');
+  assert.match(code, /\{ PetId = petid \}/);
+});
+
+test('TYPE-1: a capture with no typed destination keeps the type the user picked', () => {
+  // The store-as pick still governs when nothing constrains it — a value that only ever goes into a URL
+  // or is never re-used must not be silently retyped.
+  const row: any = { id: 'r6', name: 'Capture only', items: [
+    { type: 'Class', ref: 'StripePostCustomers', captures: [{ fieldPath: 'id', variable: 'custid', type: 'number' }] },
+  ] };
+  const code = generateTestForRow(row, page, { methods, classes } as any);
+  assert.match(code, /var custid = await ExtractFields<decimal>\(/);
+});
+
 test('no overrides → plain instantiation (unchanged behaviour)', () => {
   const row: any = { id: 'r3', name: 'Plain', items: [
     { type: 'Method', ref: 'PostFormAsync' },

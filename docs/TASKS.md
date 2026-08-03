@@ -21,14 +21,28 @@ here affect both editions — note the coordinated version bump on any task that
   var request2 = new PetStorePlaceOrder() { PetId = petid };   // error CS0266: decimal → int?
   ```
 
-  **Two causes, both in this repo:**
-  1. **The capture type and the destination type are chosen independently.** The OUT capture's type is a
-     coarse user pick (`string`/`number`/`bool`/`Guid`) and `number` always becomes C# `decimal`
-     ([e2eCaseLogic.ts:127](../src/services/e2eCaseLogic.ts:127)) — chosen to hold large ids exactly.
-     The destination is whatever the spec declared, here `int?`. Nothing reconciles them.
-  2. **A variable override is emitted verbatim.** `overrideValue`
-     ([E2ETestGenerationService.ts:50](../src/services/E2ETestGenerationService.ts:50)) returns
-     `v.value` unchanged when `isVariable`, discarding the destination type it was just handed.
+  **Two causes, both in this repo** (corrected 2026-08-03 while fixing — the original write-up blamed
+  `overrideValue`, which turned out to be innocent; the machinery to prevent this already existed and was
+  simply broken):
+  1. **`emitCaptures` never consulted the destination type.** It typed the capture purely from the
+     store-as pick (`mapCaptureType(c.type, 'csharp')` — `number` → `decimal`, chosen to hold large ids
+     exactly) while the destination was whatever the spec declared, here `int?`. Nothing reconciled them.
+  2. **The look-ahead that knows the destination was silently dead.** `state.varTypes` maps each captured
+     variable to the type of the field it later feeds — but it passed the **raw spec key** (`petId`) to
+     `csTypeOf` against a class declaring `PetId`. C# is case-sensitive, so it always resolved to
+     `'string'` and was then discarded by the `!== 'string'` guard. This is the same **OVR-CASE**
+     mismatch fixed in `classInitializer` and never applied to the look-ahead.
+
+  **FIXED for C# 2026-08-03** (steps 1–4 below still open — they are the portability work):
+  `emitCaptures` now prefers `state.varTypes.get(variable)` over the store-as pick, and the look-ahead
+  uses `csPropertyName(prop)`. With no typed destination the user's pick still governs. Bug-first tests in
+  [test/overrides.test.ts](../test/overrides.test.ts): the pinned case failed with `ExtractFields<decimal>`
+  before the fix and now emits `ExtractFields<int?>`; a companion test guards that an unconstrained
+  capture keeps `decimal`. Full suite 262/262.
+
+  **Known limit of the C# fix:** `varTypes` is a flat map, so one variable pinned onto **two different**
+  field types keeps only the last. That is what step 3 (`coerce`) exists to solve properly — convert at
+  the assignment instead of retyping the capture.
 
   **Blocker for PY-1 — `csTypeOf` finds the destination type by regexing the generated C# source**
   (`public\s+(Type)\s+Prop`, [E2ETestGenerationService.ts:43](../src/services/E2ETestGenerationService.ts:43)).
@@ -56,8 +70,8 @@ here affect both editions — note the coordinated version bump on any task that
      Python would make a third copy.
 
   **Bug-first test:** generate the PetStore add-pet → place-order chain with the id captured as `number`
-  and pinned onto an `int?` field, and assert the emitted assignment converts. It must fail on today's
-  emitter. Repeat per language once the emitter seam is in.
+  and pinned onto an `int?` field, and assert the emitted assignment converts. **Done for C#** (see FIXED
+  above). Repeat per language once the emitter seam is in.
 
   **Edition impact:** Desktop generates through the same service and ships the identical defect — any
   test case that threads a captured id into a typed field fails to build there too. It has simply been
