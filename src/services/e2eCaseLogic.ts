@@ -80,7 +80,8 @@ export function availableVarsBefore(items: E2ECaseItem[], idx: number): string[]
   const vars: string[] = [];
   items.slice(0, idx).forEach((s, i) => {
     vars.push(s.assignTo?.trim() || (s.type === 'Class' ? `response${i + 1}` : `result${i + 1}`));
-    if (s.capture?.variable) vars.push(s.capture.variable);
+    if (s.capture?.variable) vars.push(s.capture.variable);            // legacy singular capture
+    (s.captures || []).forEach(c => { if (c.variable?.trim()) vars.push(c.variable.trim()); }); // typed captures[] (E2E-CAP-1)
   });
   return [...new Set(vars.filter(Boolean))];
 }
