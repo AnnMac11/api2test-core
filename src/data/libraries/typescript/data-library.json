@@ -178,5 +178,29 @@
     "isCustom": false,
     "project": null,
     "comments": "Array-of-objects worked example (petstore tags)."
+  },
+  {
+    "id": "99",
+    "methodName": "RandomInt",
+    "returnType": "int",
+    "parameters": "min: number = 0, max: number = 100",
+    "description": "Random integer in a user-chosen range. Generic cover for int fields with no dedicated method (e.g. trial_period_days, days_until_due).",
+    "code": "randomInt(min: number = 0, max: number = 100): number {\n  return faker.number.int({ min, max });\n}",
+    "createdDate": "2026-08-05T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": "SEED-4: deliberately generic — no per-field int methods."
+  },
+  {
+    "id": "100",
+    "methodName": "UnixTimestamp",
+    "returnType": "long",
+    "parameters": "daysOffset: number = 0",
+    "description": "Epoch seconds with day offset: negative = past, 0 = now, positive = future. For Stripe-style date fields (created, cancel_at, billing_cycle_anchor).",
+    "code": "unixTimestamp(daysOffset: number = 0): number {\n  return Math.floor((Date.now() + daysOffset * 86400000) / 1000);\n}",
+    "createdDate": "2026-08-05T00:00:00.000Z",
+    "isCustom": false,
+    "project": null,
+    "comments": "SEED-4: Stripe dates are integer epoch seconds."
   }
 ]

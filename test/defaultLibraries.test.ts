@@ -7,7 +7,7 @@ import {
 } from '../src/data/defaultLibraries';
 
 test('csharp libraries return the canonical built-in sets', () => {
-  assert.equal(getDefaultDataLibrary('csharp').length, 98);
+  assert.equal(getDefaultDataLibrary('csharp').length, 100);
   assert.equal(getDefaultApiMethodLibrary('csharp').length, 26);
 });
 
@@ -71,13 +71,13 @@ test('every validator chooseExtractMethod can pick exists in all 3 languages', (
 test('accessors hand out fresh copies (mutation does not leak)', () => {
   const a = getDefaultDataLibrary('csharp');
   a.pop();
-  assert.equal(getDefaultDataLibrary('csharp').length, 98);
+  assert.equal(getDefaultDataLibrary('csharp').length, 100);
 });
 
 test('python libraries mirror the csharp set (same methods, Python bodies)', () => {
   const py = getDefaultDataLibrary('python');
   const cs = getDefaultDataLibrary('csharp');
-  assert.equal(py.length, 98);
+  assert.equal(py.length, 100);
   assert.equal(getDefaultApiMethodLibrary('python').length, 26);
   // same methodNames (auto-matching parity), but Python code bodies
   assert.deepEqual(py.map((m) => m.methodName).sort(), cs.map((m) => m.methodName).sort());
@@ -110,6 +110,38 @@ test('SEED-2: PhotoUrls and Tags array-field methods are curated in all 3 langua
   }
 });
 
+test('SEED-3: date/Twilio/Percent methods renamed for A-Z order and casing', () => {
+  for (const lang of ['csharp', 'python'] as const) {
+    const names = new Set(getDefaultDataLibrary(lang).map((m) => m.methodName));
+    for (const gone of ['GetDate', 'GetDateStr', 'GetDateTimeStr', 'twilioToken', 'twilioSID', 'Percentage']) {
+      assert.ok(!names.has(gone), `${lang}: ${gone} should be renamed away`);
+    }
+    for (const now of ['DateNow', 'DateStr', 'DateTimeStr', 'TwilioToken', 'TwilioSid', 'Percent']) {
+      assert.ok(names.has(now), `${lang}: expected renamed ${now}`);
+    }
+  }
+  // ids survive the rename so refreshDefaults propagates it to existing stores
+  const byId = Object.fromEntries(getDefaultDataLibrary('csharp').map((m) => [m.id, m]));
+  assert.equal(byId['13']?.methodName, 'DateNow', 'GetDate kept id 13');
+  assert.equal(byId['14']?.methodName, 'DateStr', 'GetDateStr kept id 14');
+  assert.equal(byId['15']?.methodName, 'DateTimeStr', 'GetDateTimeStr kept id 15');
+});
+
+test('SEED-5: DateOfBirth is a DateOnly — a birth date has no time component', () => {
+  for (const lang of ['csharp', 'python'] as const) {
+    const dob = getDefaultDataLibrary(lang).find((m) => m.methodName === 'DateOfBirth');
+    assert.equal(dob?.returnType, 'DateOnly', `${lang}: DateOfBirth must be DateOnly, not DateTime`);
+  }
+});
+
+test('SEED-4: RandomInt and UnixTimestamp curated in all 3 languages', () => {
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    const byName = Object.fromEntries(getDefaultDataLibrary(lang).map((m) => [m.methodName, m]));
+    assert.equal(byName['RandomInt']?.returnType, 'int', `${lang}: RandomInt is an int`);
+    assert.equal(byName['UnixTimestamp']?.returnType, 'long', `${lang}: UnixTimestamp is a long (epoch seconds)`);
+  }
+});
+
 test('mergeDefaults adds missing defaults and preserves user items', () => {
   const userCustom = { methodName: 'MyCustomThing', code: 'x' };
   const existing = [userCustom, { methodName: 'FirstName' }];
@@ -117,7 +149,7 @@ test('mergeDefaults adds missing defaults and preserves user items', () => {
   // user's custom method survives, FirstName is not duplicated, the rest are added
   assert.ok(merged.includes(userCustom), 'user custom preserved');
   assert.equal(merged.filter((m: any) => m.methodName === 'FirstName').length, 1, 'no duplicate');
-  assert.equal(merged.length, 98 + 1, 'all defaults present plus the one custom');
+  assert.equal(merged.length, 100 + 1, 'all defaults present plus the one custom');
 });
 
 test('every seeded base-path / token method is attached to an application by id', () => {
@@ -145,5 +177,5 @@ test('every seeded base-path / token method is attached to an application by id'
 test('mergeDefaults returns the same array when nothing is missing', () => {
   const defaults = getDefaultDataLibrary('csharp');
   const merged = mergeDefaults(defaults, defaults);
-  assert.equal(merged.length, 98);
+  assert.equal(merged.length, 100);
 });

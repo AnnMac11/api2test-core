@@ -85,6 +85,12 @@ export interface RefreshResult<T> {
  *
  * Clients flip `isCustom` to true when a user edits a built-in (take-ownership-on-edit), which is
  * what makes the replace safe. Supersedes {@link mergeDefaults} (kept for existing callers).
+ *
+ * Matching (REFRESH-1): a shipped copy matches its curated version by stable `id` first, then by
+ * name key. Id-first is what lets a curated RENAME (SEED-3) replace the old-named copy in place —
+ * name-only matching left the stale copy AND appended the new name as a duplicate. Stores whose ids
+ * differ from the curated ids (DB-backed clients) still match by name. Only non-custom items match
+ * by id — a user method that happens to reuse a curated id is a different method, not a stale copy.
  */
 export function refreshDefaults<T extends { id?: string; isCustom?: boolean }>(
   existing: T[],
@@ -92,19 +98,27 @@ export function refreshDefaults<T extends { id?: string; isCustom?: boolean }>(
   keyOf: (item: T) => string = (item) => String((item as any).methodName ?? (item as any).id ?? '').toLowerCase(),
 ): RefreshResult<T> {
   const curatedByKey = new Map(defaults.map((d) => [keyOf(d), d]));
+  const curatedById = new Map(defaults.filter((d) => d.id !== undefined).map((d) => [String(d.id), d]));
   const replacedItems: T[] = [];
+  const matched = new Set<T>();
 
   const items = existing.map((item) => {
-    const curated = curatedByKey.get(keyOf(item));
-    if (!curated || item.isCustom === true) return item;
+    if (item.isCustom === true) return item;
+    const curated =
+      (item.id !== undefined ? curatedById.get(String(item.id)) : undefined) ??
+      curatedByKey.get(keyOf(item));
+    if (!curated) return item;
+    matched.add(curated);
     const replacement = { ...curated, ...(item.id !== undefined ? { id: item.id } : {}) };
     if (stableStringify(replacement) === stableStringify(item)) return item; // already current
     replacedItems.push(replacement);
     return replacement;
   });
 
+  // A curated method is already present when a shipped copy matched it (by id or name) or when any
+  // existing item — including a user-owned one — occupies its name key (blocks a duplicate append).
   const seen = new Set(existing.map(keyOf));
-  const addedItems = defaults.filter((d) => !seen.has(keyOf(d)));
+  const addedItems = defaults.filter((d) => !matched.has(d) && !seen.has(keyOf(d)));
 
   return {
     items: addedItems.length ? [...items, ...addedItems] : items,

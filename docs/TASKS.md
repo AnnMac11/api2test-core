@@ -11,6 +11,53 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [x] **SEED-5 — DateOfBirth returns DateOnly (user decision 2026-08-05). DONE 2026-08-05 (branch
+  `develop`).** Was `DateTime` — a birth date carried a time component and, subtracting whole years
+  only, always landed on today's month/day. Now `DateOnly` (C# `DateOnly.FromDateTime(...)`, Python
+  `.date()`) with a random 0–364 day offset; `typeClass('dateonly')` already buckets as date, so
+  matching is unchanged. Bug-first SEED-5 test in
+  [test/defaultLibraries.test.ts](../test/defaultLibraries.test.ts) failed on `DateTime`, passes
+  now; suite 281/281.
+- [x] **REFRESH-1 — refreshDefaults couldn't propagate a curated RENAME (defect, found by the user
+  2026-08-05). DONE 2026-08-05 (branch `develop`).** Matching was by name key only, so a SEED-3
+  rename left the old-named shipped copy in place AND appended the new name — an existing install
+  got `GetDateStr` + `DateStr` duplicates. Now matches shipped copies by stable `id` first, name
+  second (custom items never id-match). Bug-first in
+  [test/seedRefresh.test.ts](../test/seedRefresh.test.ts): rename case failed
+  (replaced 0/added 1/duplicate) before, passes after; full suite 280/280. Verified against the
+  real VS Code store: 6 replaced in place, 2 added, 100 total, no old names.
+- [x] **SEED-3 — rename curated Data Library methods for alphabetical order + casing. DONE
+  2026-08-05 (branch `develop`).** Bug-first: new SEED-3 test in
+  [test/defaultLibraries.test.ts](../test/defaultLibraries.test.ts) failed 4 on the old seeds
+  (renames + counts), passed after; ids 13/14/15 asserted stable for `refreshDefaults`. Full suite
+  278/278. TS seed has none of the rename targets (15-method set) — renames applied to
+  csharp + python only. Raised from
+  the VS Code Stripe-import review 2026-08-05. The grid sorts A–Z (`sortDataMethodsByName`), so the
+  `Get` prefix strands the date methods under G, and the two lowercase Twilio names break the
+  PascalCase convention. Renames (agreed): `GetDate`→`DateNow`, `GetDateStr`→`DateStr`,
+  `GetDateTimeStr`→`DateTimeStr`, `twilioToken`→`TwilioToken`, `twilioSID`→`TwilioSid`,
+  `Percentage`→`Percent` (bonus: Stripe's `application_fee_percent` then auto-matches via the
+  contains tier). Apply in **all 3 language seeds** (`src/data/libraries/{csharp,typescript,python}/
+  data-library.json`), **keep the stored ids** so SEED-1's `refreshDefaults` propagates the rename to
+  existing stores. Re-review task filed in Api2TestVS (SEED-ADOPT-1); Desktop picks it up via the
+  same refresh.
+- [x] **SEED-4 — add two curated Data Library methods (deliberately minimal). DONE 2026-08-05
+  (branch `develop`, with SEED-3).** `RandomInt` (id 99) + `UnixTimestamp` (id 100, returnType
+  `long`) added to all 3 language seeds; SEED-4 test failed before, passes after; data-library
+  count 98→100. Raised with SEED-3.
+  Decision: do NOT add per-field Stripe methods (TrialPeriodDays, UnitAmount, enum generators, …) —
+  generic methods + user-picked values cover them. Add only: **`RandomInt(min:int, max:int)`**
+  (generic int — covers `trial_period_days`, `days_until_due`, `unit_amount`, any ranged int) and
+  **`UnixTimestamp`** (epoch seconds — Stripe date fields `created`, `cancel_at`,
+  `billing_cycle_anchor`, `backdate_start_date`, `trial_end`). All 3 language seeds.
+- [ ] **MATCH-1 — `*Object` methods declare `returnType: string`, causing a wrong match and a missed
+  match (defect).** Found on Stripe import 2026-08-05: (a) Stripe's `object` field (a string literal
+  discriminator like `"list"`) auto-matched **LocationObject** — the method returns `string`, so it
+  sits in the string bucket and its `Object` word hits tier-3 reverse-contains; (b) `metadata`
+  (object field) is left Not Assigned even though **MetadataObject** exists — same root cause, the
+  method is filtered out of the object bucket before name matching. Decide: retype the `*Object`
+  seed methods to a real object return, or teach the matcher. Bug-first test in
+  `test/matching.test.ts` per protocol.
 - [ ] **TYPE-1 — a captured value assigned to a typed field doesn't compile (CS0266), and the fix has to
   work for all three languages.** Raised from VS Code 2026-08-03, hit as a **real compile error** the
   first time Execute actually built the sandbox (RB-22): a 3-step PetStore chain captures `id` from
@@ -862,6 +909,20 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
+
+- [x] **CAP-INVAR — a value captured the typed way (`captures[]`) was invisible to a later step's IN
+  param; the second class could not bind it. DONE 2026-08-05 (`develop`).** Found reviewing the Desktop
+  Create Test Case flow (user: *"the IN parameter, in the second class is not working"*). The E2E-CAP-1
+  refactor moved OUT captures from separate extract steps into `captures[]` on the Class step, and
+  updated the producers (generation reads `item.captures`) and the dialog's OUT rows — but
+  `availableVarsBefore` (`e2eCaseLogic.ts`), the function that lists variables offered to a later step's
+  IN dropdown, still read only `assignTo` + the legacy singular `capture`. So a `captures[]` variable
+  never reached the second class's "select variable…" list. **Why tests missed it:** the one
+  `availableVarsBefore` test used only the legacy `capture` shape; it's a characterization suite (froze
+  pre-refactor behaviour) and passed *unchanged* through E2E-CAP-1 — the red flag CLAUDE.md names — and
+  nothing tested the producer→consumer seam. Fix: collect `s.captures[].variable` too. Bug-first: new
+  test `availableVarsBefore lists typed captures[]` RED before / GREEN after; whole suite 276 pass.
+  **Editions:** rebuild core `dist`; Desktop + VS Code consume on next core bump/reload.
 
 - [x] **RUN-TRX — every local C# run reported "dotnet test produced no TRX", even when the tests passed.
   DONE 2026-08-03 (`develop`).** Raised from VS Code 2026-08-03: the user ran Execute twice and got

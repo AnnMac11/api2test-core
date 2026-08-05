@@ -69,6 +69,25 @@ test('replacedItems/addedItems list exactly what a DB-backed client must persist
   assert.deepEqual(res.addedItems.map(m => m.methodName), ['LastName']);
 });
 
+test('REFRESH-1: a curated RENAME replaces the old-named shipped copy via its stable id (no duplicate)', () => {
+  // SEED-3 renamed GetDateStr -> DateStr keeping id 14. Name-only matching left the old copy AND
+  // appended the new name — an existing install ended up with both.
+  const curated: Method[] = [{ id: '14', methodName: 'DateStr', code: 'return today();', isCustom: false }];
+  const existing: Method[] = [{ id: '14', methodName: 'GetDateStr', code: 'return today();', isCustom: false }];
+  const res = refreshDefaults(existing, curated);
+  assert.deepEqual(res.items.map(m => m.methodName), ['DateStr'], 'renamed in place — no GetDateStr+DateStr pair');
+  assert.equal(res.replaced, 1);
+  assert.equal(res.added, 0);
+});
+
+test('REFRESH-1: id match never overrides a user-owned method', () => {
+  const curated: Method[] = [{ id: '14', methodName: 'DateStr', code: 'return today();', isCustom: false }];
+  const existing: Method[] = [{ id: '14', methodName: 'MyThing', code: 'mine', isCustom: true }];
+  const res = refreshDefaults(existing, curated);
+  assert.equal(res.items.find(m => m.id === '14')!.code, 'mine', 'user method untouched');
+  assert.deepEqual(res.addedItems.map(m => m.methodName), ['DateStr'], 'curated still appended — different method entirely');
+});
+
 test('order: existing order preserved; additions appended in curated order', () => {
   const existing: Method[] = [
     { id: 'x2', methodName: 'LastName', code: 'return faker.Name.Last();', isCustom: false },
