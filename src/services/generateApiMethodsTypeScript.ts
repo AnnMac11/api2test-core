@@ -75,24 +75,10 @@ export function generateApiMethodsTypeScript(
     ts += otherMethods.map((m) => methodFromCode(m)).join('\n');
   }
 
-  // Typed field extraction (E2E-CAP-1) — reads a dotted field path off the JSON body and STORES it as the
-  // user-chosen type. TS erases generics, so the target type rides as a runtime token (\`number\`/\`string\`/
-  // \`boolean\`) and the value is converted, honouring the user's store-as choice even when it differs from
-  // the JSON's native type (e.g. a numeric id captured as a string for the next request's string field).
-  ts += `  /**
-   * Read a response field by dotted path (e.g. \`data.id\`) and convert it to \`as\` (\`number\`/\`string\`/
-   * \`boolean\`; defaults to string). The store-as type is the user's choice, not the JSON's native type.
-   */
-  static async extractFields(response: Response, fieldPath: string, as: string = 'string'): Promise<any> {
-    const data: unknown = await response.clone().json();
-    const raw = fieldPath.split('.').reduce<any>((o, k) => (o == null ? o : o[k]), data);
-    if (raw == null) { return raw; }
-    const t = (as || 'string').toLowerCase();
-    if (/(number|int|long|short|byte|decimal|double|float)/.test(t)) { return Number(raw); }
-    if (t.includes('bool')) { return String(raw).toLowerCase() === 'true'; }
-    return String(raw);
-  }
-}
+  // Typed field extraction (E2E-CAP-1) used to be appended here as a second `extractFields` on top of the
+  // library's `extractFieldFromResponse` — one operation under two names. The curated `ExtractFieldAsync`
+  // now takes the store-as type itself, so it is emitted from the library like every other method.
+  ts += `}
 
 /**
  * Captures each API call (request + response) so the local/CI runner can extract it from the test's

@@ -18,8 +18,8 @@ export * from './adapters';
 // ── Engine services ────────────────────────────────────────────────────────────
 export { ApiFormatAdapter } from './services/ApiFormatAdapter';
 export { ApiFormatDetector } from './services/ApiFormatDetector';
-export { OpenApiParserService } from './services/OpenApiParserService';
-export { PostmanParserService } from './services/PostmanParserService';
+// (No per-format parser exports: `ApiFormatAdapter` handles Postman and OpenAPI along with the other
+//  formats, and the two standalone parser services it superseded were removed — IMPORT-DEAD.)
 export { ApiLibraryService } from './services/ApiLibraryService';
 export { ApiClassLibraryService } from './services/ApiClassLibraryService';
 export { ApiMethodLibraryService } from './services/ApiMethodLibraryService';
@@ -28,6 +28,10 @@ export {
     typeClass, coarseKind, dataMethodKindLabel, orderDataMethodsForField, sortDataMethodsByName
 } from './services/dataMethodMatching';
 export type { TypeClass, CoarseKind, DataMethodOption } from './services/dataMethodMatching';
+// DD-STRUCT: what is inside one dictionary field, read back out of the endpoint's stored schema —
+// display only, so a client can show the user what an `object`/`array` field actually holds.
+export { describeFieldStructure } from './services/fieldStructure';
+export type { FieldStructure, FieldStructureMember } from './services/fieldStructure';
 export { DataLibraryService } from './services/DataLibraryService';
 export { DictionaryImportService } from './services/DictionaryImportService';
 export type { DictionaryImportResult, BatchImportResult, BatchImportItem } from './services/DictionaryImportService';

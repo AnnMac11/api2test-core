@@ -11,6 +11,7 @@
  * rules here means the builder's behaviour is covered by fast tests and can change safely.
  */
 import type { E2ECaseItem } from '../models/E2EDto';
+import { canonicalMethodName } from './e2eMethodSelection';
 
 /** Minimal shape of a library picker item these rules read (className/method entry). */
 export interface PickerLike {
@@ -91,24 +92,17 @@ export function isSendMethod(methodParams: MethodParamMap, ref: string): boolean
   return paramsOf(methodParams, ref).some(p => p.toLowerCase().includes('url'));
 }
 
-/** Friendly, plain display labels for the library methods (display ONLY — the underlying method name that
- *  drives code generation is unchanged). Keeps the builder readable: "ExtractField", "Validate 400", … */
-const METHOD_LABELS: Record<string, string> = {
-  ExtractFieldFromResponse: 'ExtractFields',
-  ExtractTokenFromResponse: 'ExtractToken',
-  ValidateResponseAsync: 'Validate 200/201',
-  ValidateDeleteResponseAsync: 'Validate 200/204',
-  ValidateBadRequestResponseAsync: 'Validate 400',
-  ValidateUnauthorizedResponseAsync: 'Validate 401',
-  ValidateForbiddenResponseAsync: 'Validate 403',
-  ValidateNotFoundResponseAsync: 'Validate 404',
-  ValidateConflictResponseAsync: 'Validate 409',
-  ValidateValidationErrorResponseAsync: 'Validate 422',
-};
+/**
+ * Plain display label for a library method (display ONLY — the method name is what drives code generation).
+ *
+ * There used to be a hand-kept table of labels here because the method names didn't say what they did
+ * (`ValidateNotFoundResponseAsync` → "Validate 404"). Since NAME-1 the names carry the meaning themselves,
+ * so the label is just the name minus the `Async` noise: `ExtractFieldAsync` → "ExtractField",
+ * `ValidateNotFound_404Async` → "ValidateNotFound_404". A case saved before the rename is translated first,
+ * so the builder never shows a name that no longer exists.
+ */
 export function friendlyMethodName(ref: string): string {
-  if (METHOD_LABELS[ref]) return METHOD_LABELS[ref];
-  // Fallback for un-mapped methods: drop the noisy suffixes (…FromResponse / …ResponseAsync / …Async).
-  return (ref || '').replace(/FromResponse$/, '').replace(/ResponseAsync$/, '').replace(/Async$/, '') || ref;
+  return canonicalMethodName(ref).replace(/Async$/, '') || ref;
 }
 
 /**

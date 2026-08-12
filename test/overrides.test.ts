@@ -87,7 +87,7 @@ test('TYPE-1: a captured value pinned onto a typed field is captured in THAT typ
 
   const code = generateTestForRow(row, page, { methods, classes: chain } as any);
 
-  assert.match(code, /var petid = await ExtractFields<int\?>\(/,
+  assert.match(code, /var petid = await ExtractFieldAsync<int\?>\(/,
     'the capture must take the destination field\'s type, or the assignment below cannot compile');
   assert.match(code, /\{ PetId = petid \}/);
 });
@@ -99,7 +99,7 @@ test('TYPE-1: a capture with no typed destination keeps the type the user picked
     { type: 'Class', ref: 'StripePostCustomers', captures: [{ fieldPath: 'id', variable: 'custid', type: 'number' }] },
   ] };
   const code = generateTestForRow(row, page, { methods, classes } as any);
-  assert.match(code, /var custid = await ExtractFields<decimal>\(/);
+  assert.match(code, /var custid = await ExtractFieldAsync<decimal>\(/);
 });
 
 test('no overrides → plain instantiation (unchanged behaviour)', () => {

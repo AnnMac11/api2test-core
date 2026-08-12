@@ -11,6 +11,88 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [x] **SEND-1 / NAME-1 — a GET step generated code that could not compile, and the method names did not
+  say what they do. DONE 2026-08-08 (branch `develop`, uncommitted).** Found by the user: generated test
+  `test5` failed with
+  `CS1503: cannot convert from 'object' to 'System.Net.Http.HttpResponseMessage'` at both follow-up lines.
+  - **Root cause (SEND-1) — one send helper had a different contract from all the others.** The curated
+    C# `GetAsync` returned `Task<T>` (the deserialised body), while every validator and extractor takes an
+    `HttpResponseMessage`. So a GET step could never be followed by anything. TypeScript's `get` already
+    returned the response — evidence the response-returning shape is the intended one. Fixed in the
+    curated C# **and** Python library bodies (`GetAsync` → `Task<HttpResponseMessage>`) and in the emitter,
+    which now emits `await GetAsync(token, url)` with no `<object>` and records the GET response as
+    capturable (E2E-CAP-GET).
+  - **Root cause (NAME-1) — the names described the mechanism, not the usage.** Renamed across all three
+    seeded libraries (`csharp` / `python` / `typescript`):
+    `ExtractFieldFromResponse`→`ExtractFieldAsync`, `ExtractTokenFromResponse`→`ExtractToken`,
+    `ParseJsonResponse`→`ExtractBodyAs`, `DeleteByParamAsync`→`DeleteByPathValueAsync`,
+    `PostMultipartAsync`→`UploadFileAsync`, and every validator now carries its status codes:
+    `ValidateSuccess_200_201Async`, `ValidateDeleted_200_204Async`, `ValidateBadRequest_400Async`,
+    `ValidateUnauthorized_401Async`, `ValidateForbidden_403Async`, `ValidateNotFound_404Async`,
+    `ValidateConflict_409Async`, `ValidateValidationError_422Async`; the app helpers became
+    `PetStoreBaseUrl` / `PetStoreApiKey` / `StripeBaseUrl` / `StripeSecretKey`.
+  - **No data migration.** The stored library is matched by stable `id` first (REFRESH-1), so a curated
+    rename replaces in place. Saved E2E cases *do* store method names (`item.ref`, `page.token`), so
+    `canonicalMethodName(ref)` + `LEGACY_METHOD_NAMES` translate a pre-rename name **at generation time**
+    in both emitters. `friendlyMethodName` lost its hand-written `METHOD_LABELS` table — the name is now
+    the label (minus `Async`), so the two can no longer drift.
+  - **Bug-first.** The gap that let this ship: TypeScript had a `tsc` compile guard, C# had none, so a
+    compile error passed a green string-matching suite. New `test/e2eCSharpCompile.test.ts` emits the
+    shipped seed as `ApiMethods.cs` plus a generated chain and runs the real `dotnet build` (skipped, not
+    failed, with no .NET SDK). Evidence: emitter reverted → CS0308; library `GetAsync` reverted → CS0411;
+    both reverted → **the user's exact CS1503 at two lines**; fixed → builds. Suite: 289/289.
+
+- [x] **CLS-7 — a class must be built from its ENDPOINT's schema, not from a dictionary link. DONE
+  2026-08-08 (branch `develop`, uncommitted).** Found by the user in the VS Code Test Case builder.
+  Symptom: `PetStorePlaceOrder`
+  (POST `/store/order`, a six-field body) has **0 fields**, so the builder's `In · overwrite fields`
+  says *"No request fields on this class"* and re-generating writes nothing at all
+  (`renderClassCode` finds no body fields and no URL params → `null` → outcome `empty`, silently).
+  Verified against the user's live store (`~/.vscode/API2Test/data`).
+  - **Root cause — the field↔endpoint link is 1:1 but the relationship is many-to-many.**
+    `extractFieldsFromEndpoint(ep, true)` de-duplicates **by field name across the whole dictionary**
+    and each row stores a single `sourceEndpointId`, so every placeOrder field had already been
+    claimed by an earlier PetStore endpoint (`id`/`status`→addPet, `petId`→deletePet,
+    `quantity`/`shipDate`/`complete`→getOrderById). `importApi` then passes `addClass` only the
+    newly-added `matched` set ([DictionaryImportService.ts:86](../src/services/DictionaryImportService.ts:86)),
+    which was empty. `resyncClassFields` re-pulls by `sourceEndpointId` and has the same hole.
+  - **Decision (user, 2026-08-08): copy the values, do NOT link.** *"why don't you create a class
+    using the values to the data dictionary. do not link them. as any change to the dictionary might
+    kill the class."* The class already stores a value snapshot; only the population step is
+    link-based. New `fieldsForEndpoint(endpoint, dictionary)`: fields come from the endpoint's own
+    `requestBodySchema` + `parameterDetails`; each field's settings (type, mandatory, `dataMethod`,
+    args) are resolved from the dictionary **by name**, whoever imported it first, defaulting to
+    `NOT_ASSIGNED`. No `sourceEndpointId` filter anywhere in the class path.
+  - **Callers to move onto it:** `addClass`/`importApi` (stop passing the `matched` subset) and
+    `resyncClassFields`. The refresh should also re-take `endpoint`, `method`, `contentType` and
+    `requestBodySchema` from the endpoint — the spec may have been re-imported, not just the
+    dictionary edited.
+  - **Surface `empty`.** A class with nothing to emit currently produces no file and no message.
+  - **Implemented:** new `DataDictionaryService.fieldsForEndpoint(endpoint)` — extraction with
+    de-duplication OFF, then the dictionary's `dataMethod`/args copied in **by name** (the row whose
+    type matches wins where a name has several); type, mandatory and location stay the endpoint's,
+    since two endpoints may legitimately disagree about a shared name. `importApi` now passes its
+    result to `addClass` instead of the `matched` subset, and `resyncClassFields(id, endpoint?)`
+    rebuilds through the same path — signature changed from `(id, dictionaryFields)`, and with an
+    endpoint supplied it also re-takes `method`/`endpoint`/`contentType`/`requestBodySchema`. With no
+    endpoint (source deleted — a class outlives its source by design) it refreshes from the entry's
+    own stored schema.
+  - **Bug-first.** The guard that should have caught this was `dictionaryImport.test.ts`'s dedup test:
+    it asserts the tally on a re-import but never looks at the class that was written — it even
+    remarks "ep2 shares the same schema so it dedups to 0" without checking the consequence. New CLS-7
+    test imports `addPet` then `placeOrder` (the user's real schemas) and asserts placeOrder's class
+    holds all six of its own body fields: RED `['complete','petId','quantity','shipDate']` — `id` and
+    `status`, the two shared names, missing — GREEN after. `classFieldResync.test.ts` was rewritten:
+    its old assertions pinned the `sourceEndpointId` filter in place, so it is the test that must
+    change (it now proves the assignment is copied from a row owned by a *different* endpoint), plus
+    new cases for a field with no dictionary row and for a deleted endpoint. **284/284, tsc clean.**
+  - **Verified against the user's live store** (a copy of `~/.vscode/API2Test/data`):
+    `PetStorePlaceOrder` goes from **0 fields → 6** (`id`, `petId`, `quantity`, `shipDate`, `status`,
+    `complete`) with `RandomId`/`ParameterInt`/`Quantity`/`PetStatus` copied across by name;
+    `shipDate` and `complete` stay Not Assigned because their dictionary rows genuinely are.
+  - **Both editions.** Desktop consumes the same call and ships the same defect. Client adoption:
+    VS Code **RB-26/RB-27**; `resyncClassFields`'s second argument is now the endpoint, not the
+    dictionary.
 - [x] **SEED-5 — DateOfBirth returns DateOnly (user decision 2026-08-05). DONE 2026-08-05 (branch
   `develop`).** Was `DateTime` — a birth date carried a time component and, subtracting whole years
   only, always landed on today's month/day. Now `DateOnly` (C# `DateOnly.FromDateTime(...)`, Python
@@ -155,26 +237,9 @@ here affect both editions — note the coordinated version bump on any task that
   - **Edition impact:** both editions delete code; neither changes behaviour. Paired re-review tasks:
     VS Code **RB-25**, Desktop **E2E-CAP-LIFT**.
 
-- [ ] **APP-ID-IMPORT — import never sets `applicationId`, so imported data is name-linked only.**
-  Raised from VS Code 2026-07-29 (user asked whether the app-id link works; it doesn't, in practice).
-  Two holes on the import path:
-  1. `ApiLibraryService` import stores the application **name** on each `ApiMethodDto` and leaves
-     `applicationId` undefined — even though the model documents the id as the authoritative link
-     ([ApiMethodDto.ts:37](../src/models/ApiMethodDto.ts:37)) and APP-1 `basePathOptions`/`tokenOptions`
-     filter on it.
-  2. `ApiClassLibraryService.addClass` ([:46](../src/services/ApiClassLibraryService.ts:46)) builds the
-     class entry with no `applicationId`, and `DictionaryImportService.importApis` creates every class
-     through it — so classes made at import are name-linked whatever the caller knows.
-  - **Fix:** carry the id end-to-end — import resolves the app once and stamps `applicationId` on each
-    method; `addClass` copies `apiMethod.applicationId` onto the class entry. Both editions then get a
-    rename-proof link for free (VS Code's wrapper stamps it today, but only on the one-at-a-time path).
-  - **Bug-first test:** import a spec for an app, rename the app, and assert the endpoints and their
-    classes still resolve to it.
-  - **Paired re-review task** in `../Api2TestVS/docs/TASKS.md` under **RB-9**: on the next core
-    delivery, re-verify imported methods + classes carry the id and drop the VS Code-side stamping if
-    it's then redundant.
-  - **Edition impact:** Desktop has the same gap (same import path), so deploy folders/namespaces there
-    also fall back to the name.
+- [x] **DONE 2026-08-10 — see the Done section.** ~~APP-ID-IMPORT — import never sets
+  `applicationId`, so imported data is name-linked only.~~
+
 - [ ] **APP-SCOPE-2 — app scoping helpers for the Test Cases page (classes + sole-app default).**
   Raised from VS Code 2026-07-29 (RB-10: put a Desktop-style application selector on the Test Cases
   page). `methodScope.ts` scopes **methods** by app id, but the same page needs to scope **classes** to
@@ -909,6 +974,147 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
+
+- [x] **IMPORT-HANG — RESP-SCHEMA made a real spec import never finish, and say nothing while it
+  didn't. DONE 2026-08-10 (`develop`, uncommitted).** Reported the same day by the user, on the very
+  next import: *"I tried to import stripe api via url, but it appears to be stuck. there is no error?"*
+  - **Measured, not guessed.** The committed adapter takes **58 ms** on Stripe's 7.9 MB spec (589
+    endpoints). With RESP-SCHEMA it **exhausted an 8 GB heap after ~140 s** and never returned. Nothing
+    threw, so the dialog sat on "Importing…" indefinitely. The user's store confirmed it: an
+    application row written, `api-methods.json` still 24 bytes.
+  - **Cause 1 — the resolver is combinatorial.** `resolveSchemaTree` clones its cycle guard per branch
+    (`new Set(seen)`), so the guard is per-*path*: a type reachable by k paths is expanded k times.
+    Request bodies never exposed it (Stripe's are shallow form-encoded objects); response bodies are
+    the full object graph, so RESP-SCHEMA turned a linear walk into an exponential one.
+    **Fix:** `MAX_SCHEMA_DEPTH = 3` and `MAX_SCHEMA_NODES = 300`, threaded through every recursion.
+    At a limit the node degrades to a bare `{ type }` — exactly what the cycle guard already emitted,
+    so no caller needed changing. Depth 3 is what reads these trees: field (1) → items (2) → the
+    element's members (3). Stripe now resolves in **99 ms / 5.7 MB** of response schema.
+  - **Cause 2 — the import wrote the file once per endpoint.** `importFromAny` looped `addItem`, which
+    re-reads and re-serialises the whole collection each call: 589 rewrites of a file growing to ~8 MB.
+    Quadratic, and it was there before RESP-SCHEMA — that change just made each row 4× bigger.
+    **Fix:** read once, map all, `writeJsonFile` once.
+  - **Cause 3 (found in passing, same file) — `baseUrl` was misparenthesised.** `spec.servers?.[0]?.url
+    || spec.host ? … : ''` binds `||` tighter than `?:`, so **every OpenAPI v3 import** produced
+    `https://undefined/v1/customers`. Fixed, along with the trailing slash Stripe declares on its
+    server URL (`https://api.stripe.com/` + `/v1/customers` gave a doubled slash).
+  - **Bug-first:** new `test/schemaExpansionBounds.test.ts` (dense cross-referencing spec — **471 KB for
+    one endpoint / 28.8 MB for 61** before, bounded after) and `test/importWriteCost.test.ts` (**200
+    writes for 200 endpoints** before, 1 after). The URL fix REDs `importFidelity.test.ts`, whose
+    fixture now carries Stripe's real trailing slash. Suite **301 → 312 passing**.
+  - **Adoption:** VS Code 0.2.51. **Desktop has NOT** — it shares this import path, so it has all three
+    bugs; see `../api2test/docs/TASKS.md`.
+
+- [x] **RESP-SCHEMA — import threw away every response shape, so no GET's fields could be described**
+  (2026-08-10, branch `develop`, uncommitted). Found the same day, when DD-STRUCT shipped and the
+  user's actual field still showed nothing: *"previously there was a bug where the api data was not
+  completely saved."* They were right.
+  - **The gap:** `resolveBodySchema` → `resolveSchemaTree` was called for the **request** body only.
+    For a response the adapter stored `generateExampleFromSchema`'s output — a flattened skeleton
+    whose `getExampleValue` returns `[]` for every array and `''` for every string. So Stripe's
+    `GET /v1/customers`, whose 200 is `{ data: [Customer], has_more, url }`, was written to disk as
+    `{"data": [], "has_more": false, "object": "", "url": ""}`. A GET has no request body, and
+    `extractFieldsFromSchema` falls back to `responseExamples` for those endpoints — so for **every
+    GET** the field rows existed while nothing on disk said what they held. Verified against the
+    user's real store: 441 of 589 imported endpoints had an empty `properties: {}` body schema.
+  - **Why it survived so long:** the request-side half of the same defect WAS fixed (`74b00d4`,
+    2026-07-15, "array-root request bodies extract the element's fields") and the response half was
+    never filed. Nothing downstream read element shape until DD-STRUCT, so the loss had no symptom —
+    `"data": []` yields the right name and the right type — and `grep responseExample test/` returned
+    nothing: the path had no test at all.
+  - **Fix:** new `UnifiedApiDto.responseBodySchema` + `ApiMethodDto.responseBodySchema`, filled by the
+    OpenAPI/Swagger adapter with `resolveSchemaTree(spec, respJson?.schema || resp?.schema)` — the same
+    resolver the request body already used, so `$ref`s inline and cycles are guarded. The flattened
+    example is unchanged and still stored; it was never the right source for this.
+  - **Bug-first:** new `test/responseSchemaImport.test.ts` drives the real sequence (detect →
+    adaptToUnified → toApiMethodDto → store) then reads it back through `describeFieldStructure`.
+    **2 failing / 1 passing** before, **3 passing** after; suite **298 → 301**. The third test pins the
+    example's lossy behaviour deliberately, so a future "fix" to the example can't quietly replace it.
+  - **Existing data is NOT migrated** — rows imported before this have no response schema and re-import
+    is the only way to fill them. Clients must render no structure rather than invent one.
+  - **Adoption:** VS Code the same day (Edit Field falls back to the response schema — DD-STRUCT-2 in
+    `../Api2TestVS/docs/TASKS.md`). **Desktop has NOT** — see `../api2test/docs/TASKS.md`.
+
+- [x] **DD-STRUCT — a dictionary field's own shape was unreadable, so `data: array` told the user
+  nothing. DONE 2026-08-10 (`develop`, uncommitted).** Raised from VS Code (user, editing a Data
+  Dictionary field: *"if the type is obj or array the edit needs more details"* → *"I want to see the
+  structure of the array"*).
+  - **The gap:** `extractFieldsFromSchema` deliberately makes ONE row for an `object`/`array` field —
+    the row mirrors the body's top level. That is right, but it means nothing downstream can say what
+    is inside: a client asking the user to pick a data method for `data: array` had no way to show
+    that an element is `{ id, object, amount, currency, created }`. The shape was never lost, only
+    unread — it is in the endpoint's own `requestBodySchema`.
+  - **New `describeFieldStructure(requestBodySchema, fieldName)`** (`src/services/fieldStructure.ts`,
+    exported) → `{ kind, elementType?, members[] }`, one level deep: array-of-objects reports its
+    element's members in spec order, array-of-scalars reports the element type, an object reports its
+    immediate members (a nested object is named, not expanded). Dotted names are walked, array
+    wrappers are stepped through the same way extraction does, and anything unreadable (no schema,
+    bad JSON, unknown field) is `undefined` rather than a throw — so a client just omits the display.
+  - **Description only:** creates no rows, changes no types, feeds no generation.
+  - **Bug-first:** new `test/fieldStructure.test.ts` — **6 failing** against a stub (today's state:
+    nothing can read the shape), **7 passing** implemented. Suite **291 → 298**.
+  - **Adoption:** VS Code consumed it the same day (the Edit Field dialog's Structure block — DD-EDIT
+    in `../Api2TestVS/docs/TASKS.md`). **Desktop has NOT** — its Data Dictionary UI is its own and
+    shows no structure; see `../api2test/docs/HANDOVER.md`.
+
+- [x] **IMPORT-DEAD — two uncalled import methods were still carrying the quadratic write loop
+  IMPORT-HANG had just removed. DONE 2026-08-10 (`develop`, uncommitted).** Found while collapsing VS
+  Code's duplicate import (APP-ID-SINGLE); removed on the user's instruction the same day (*"remove the
+  core dead code"*).
+  **What was wrong:** `ApiLibraryService.importFromPostman` and `importFromOpenApi` had no caller in
+  any repo — core, VS Code, Desktop, or the Jira app — and each still appended endpoints one at a time
+  via `addItem`, which rewrites the whole collection per call. A fixed bug kept alive under a public
+  method name that autocomplete offers: the next person to import a Postman collection "properly"
+  would have bought the five-minute Stripe import straight back.
+  **Fix:** both methods deleted, with the `postmanParser`/`openApiParser` fields they were the only
+  users of. That left `PostmanParserService`/`OpenApiParserService` entirely uncalled — superseded by
+  `ApiFormatAdapter`, which handles both formats along with RAML/GraphQL/Insomnia — so both files and
+  their `index.ts` exports are deleted too. Verified unreferenced across all four repos first (classes
+  *and* their exported interfaces).
+  **Bug-first:** deleting code can't be proved by a suite that already passed, so the assertion is on
+  the shape of the surface — `importWriteCost.test.ts` now reads the prototype and requires exactly
+  `['importFromAny', 'importSingleEndpoint']`. RED with the dead pair present, GREEN after. It also
+  guards the real failure mode: a *third* import path added later with its own loop and no cost test,
+  which is how the first one survived. **313 → 314 passing.**
+  **Editions:** rebuild `dist`. Not breaking for either client — neither imported the removed names.
+
+- [x] **APP-ID-SINGLE — `importSingleEndpoint` was the one import path APP-ID-IMPORT missed, so a URL
+  import was still name-only. DONE 2026-08-10 (`develop`, uncommitted).** Found in VS Code, which had
+  kept its own copy of the method purely to add the id — a workaround the user rejected outright:
+  *"if there is an issue with the core, it should be fixed, no workaround"*.
+  **Root cause:** APP-ID-IMPORT threaded `applicationId` through `importFromAny` and `toApiMethodDto`
+  and stopped there; `importSingleEndpoint` builds its DTO by hand, so it silently kept omitting the
+  field. The library has two entry points and only one of them was fixed.
+  **Fix:** `importSingleEndpoint(url, application, applicationId?)` stamps the id, same optional-param
+  contract as `importFromAny`, so existing callers still compile.
+  **Bug-first:** third case in [test/appIdImport.test.ts](../test/appIdImport.test.ts) drives the real
+  URL import and then renames the application — RED (`applicationId` undefined), GREEN after.
+  **312 → 313 passing.**
+  **Editions:** rebuild core `dist`. **VS Code — adopted 2026-08-10**: its local copy of the method is
+  deleted and it delegates (DD-STRUCT-4). **Desktop — nothing to adopt:** it has no caller of
+  `importSingleEndpoint`.
+
+- [x] **APP-ID-IMPORT — import stored the application NAME only, so a rename orphaned every imported
+  endpoint and every class made from it. DONE 2026-08-10 (`develop`, uncommitted).** Raised from VS Code
+  2026-07-29, fixed alongside the VS Code half on 2026-08-10 (user: *"we need to remove this
+  inconsistency"*). **Root cause, in sequence:** the app is created with an id → import took the app as a
+  **name string** (`toApiMethodDto(unified, source, application)` had no id parameter) → endpoints were
+  stored name-only → `addClass` had no id to copy, so the class was name-linked too → deploy/namespace
+  resolution fell back to the name. The id existed at step 1 and was dropped at step 2.
+  **Fix:** `ApiMethodDto.applicationId` and `ApiClassLibraryDto.applicationId` added (documented as the
+  authoritative, rename-proof link); `toApiMethodDto` and `ApiLibraryService.importFromAny` take an
+  optional `applicationId` and stamp it on every endpoint; `ApiClassLibraryService.addClass` copies
+  `apiMethod.applicationId` onto the class entry — so `DictionaryImportService.importApis`, which makes
+  every class through it, is covered too. Optional param = existing callers still compile.
+  **Bug-first:** new [test/appIdImport.test.ts](../test/appIdImport.test.ts) drives the real import →
+  importApi sequence, then renames the application: RED on both tests (`applicationId` undefined; the
+  class unresolvable), GREEN after. **291 passing** (was 289 + the 2 new).
+  **Editions:** rebuild core `dist`. **VS Code — adopted 2026-08-10** (picker now returns the app record,
+  `importFromAny`/`importSingleEndpoint` pass the id, `addClass` prefers the endpoint's id over its
+  name lookup; 180 passing). **Desktop — NOT adopted:** its import route
+  (`ui-browser/api2test.client/src/app/api/apilibrary/upload-api/route.ts`) builds the DTO rows itself
+  from `adaptToUnified` and sets `application` only, so it must pass the picked app's id through —
+  noted in `../api2test/docs/HANDOVER.md`.
 
 - [x] **CAP-INVAR — a value captured the typed way (`captures[]`) was invisible to a later step's IN
   param; the second class could not bind it. DONE 2026-08-05 (`develop`).** Found reviewing the Desktop

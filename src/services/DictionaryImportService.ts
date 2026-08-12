@@ -83,7 +83,11 @@ export class DictionaryImportService {
 
     // Best-effort: a class-library failure must not block the (already-saved) dictionary import.
     try {
-      await this.classLib.addClass(ep, matched);
+      // CLS-7: the class gets ITS OWN fields, not the de-duplicated subset this import happened to add.
+      // `matched` is only what was new to the dictionary — for an endpoint whose field names were all
+      // claimed by an earlier import that set is empty, and the class came out with no fields at all.
+      // Read after the addField loop above, so the rows just written are included.
+      await this.classLib.addClass(ep, await this.dd.fieldsForEndpoint(ep));
     } catch {
       /* intentionally swallowed — see class-doc policy */
     }

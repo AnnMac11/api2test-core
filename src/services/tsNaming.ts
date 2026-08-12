@@ -8,7 +8,7 @@
  * agree, so both go through this one function.
  *
  * Rule: drop a trailing `Async` (TS async functions don't carry it), then lower-case the first letter.
- *   FirstName → firstName · PostJsonAsync → postJson · GetAsync → get · ExtractFieldFromResponse → extractFieldFromResponse
+ *   FirstName → firstName · PostJsonAsync → postJson · GetAsync → get · ExtractFieldAsync → extractField
  */
 export function tsSymbol(name: string): string {
   const stripped = (name || '').replace(/Async$/, '');

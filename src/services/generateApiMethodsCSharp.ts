@@ -203,25 +203,10 @@ using Newtonsoft.Json;
     });
   }
 
-  // Typed field extraction (Option 1 — capture in the field's native type). The generator emits this when a
-  // captured value feeds a typed request field, so e.g. an id stays a number and drops in with no conversion.
-  csharpCode += `        /// <summary>
-        /// Reads a response field (via ExtractFieldFromResponse) and returns it as <typeparamref name="T"/>,
-        /// so a captured value keeps its native type — a number stays a number, dropping straight into a
-        /// numeric request field with no conversion at the use site. Strings pass through unchanged; other
-        /// scalars convert from the raw text using the invariant culture.
-        /// </summary>
-        public static async Task<T> ExtractFields<T>(HttpResponseMessage response, string fieldPath)
-        {
-            var raw = await ExtractFieldFromResponse(response, fieldPath);
-            var t = typeof(T);
-            if (t == typeof(string)) { return (T)(object)raw; }
-            if (raw == null) { return default(T); }
-            var target = System.Nullable.GetUnderlyingType(t) ?? t;
-            return (T)System.Convert.ChangeType(raw, target, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-`;
+  // Typed field extraction (Option 1 — capture in the field's native type) used to be appended here as an
+  // `ExtractFields<T>` wrapper around the library's string extractor. That gave one operation two names —
+  // the library said `ExtractFieldFromResponse`, the generated tests called `ExtractFields`. The curated
+  // `ExtractFieldAsync<T>` is now generic itself, so there is nothing to wrap and one name everywhere.
 
   // Close the ApiMethods class, emit the Reporter, then close the namespace.
   csharpCode += `    }

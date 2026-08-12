@@ -248,6 +248,54 @@ export class DataDictionaryService {
     }
 
     /**
+     * CLS-7 â€” every field of `endpoint`, with the dictionary's stored settings copied in **by name**.
+     * This is what a Class Library entry is built from.
+     *
+     * @remarks
+     * A class must NOT be assembled by filtering the dictionary on `sourceEndpointId`. The dictionary
+     * de-duplicates by field name across ALL endpoints and each row records a single owner, so a field
+     * an earlier endpoint imported first is invisible to every later endpoint that shares the name â€”
+     * PetStore `placeOrder` ended up with a class carrying zero fields because `id`, `status`, `petId`,
+     * `quantity`, `shipDate` and `complete` had all been claimed by `addPet`, `deletePet` and
+     * `getOrderById`. The relationship is many-to-many; the stored link is one-to-one.
+     *
+     * So the shape of the class comes from the **endpoint's own** body schema and parameters (the same
+     * extraction the import uses, de-duplication switched off), and the dictionary supplies only the
+     * user's reusable choice for a field of that name â€” `dataMethod` and its args. Type, mandatory and
+     * location stay the endpoint's: two endpoints may legitimately disagree about a shared name, and for
+     * this class its own spec is authoritative. Nothing is linked, so a later dictionary edit can never
+     * empty a class (user, 2026-08-08: *"create a class using the values to the data dictionary, do not
+     * link them"*).
+     *
+     * A field with no dictionary row keeps `NOT_ASSIGNED` â€” it shows as unassigned rather than being
+     * silently dropped. Where the dictionary holds several rows for one name (allowed: the duplicate
+     * check is name **+ type**), the row whose type matches this endpoint's wins.
+     *
+     * @param endpoint - The API method this class represents (an {@link ApiMethodDto}-shaped object).
+     * @returns One {@link DataDictionaryField} per field of the endpoint, dictionary settings applied.
+     */
+    async fieldsForEndpoint(endpoint: any): Promise<DataDictionaryField[]> {
+        const own = await this.extractFieldsFromEndpoint(endpoint, false);
+        const dictionary = await this.getDataDictionary();
+
+        return own.map(field => {
+            const sameName = dictionary.filter(
+                d => (d.fieldName || '').toLowerCase() === field.fieldName.toLowerCase()
+            );
+            const match =
+                sameName.find(d => (d.fieldType || '').toLowerCase() === field.fieldType.toLowerCase())
+                ?? sameName[0];
+            return match
+                ? {
+                    ...field,
+                    dataMethod: match.dataMethod || NOT_ASSIGNED,
+                    dataMethodArgs: match.dataMethodArgs || ''
+                }
+                : field;
+        });
+    }
+
+    /**
      * Walks a resolved request-body schema, creating Data Dictionary leaf fields.
      *
      * @remarks

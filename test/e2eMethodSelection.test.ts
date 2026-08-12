@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { chooseSendMethod, chooseExtractMethod, isFormEncoded } from '../src/services/e2eMethodSelection';
+import { chooseSendMethod, chooseExtractMethod, isFormEncoded, canonicalMethodName } from '../src/services/e2eMethodSelection';
 import { getDefaultApiMethodLibrary } from '../src/data/defaultLibraries';
 
 test('isFormEncoded is true only for x-www-form-urlencoded (case/charset tolerant)', () => {
@@ -39,19 +39,39 @@ test('chooseSendMethod returns no default for an unknown/missing verb (client ke
 test('chooseExtractMethod extracts when a response field is selected — regardless of verb', () => {
   // A selected response field means "capture this" → the field extractor. The <T> is NOT decided here
   // (it stays with the capture-type picker), so the method name is the same for every verb.
-  assert.equal(chooseExtractMethod('id', 'GET'), 'ExtractFieldFromResponse');
-  assert.equal(chooseExtractMethod('data.token', 'POST'), 'ExtractFieldFromResponse');
-  assert.equal(chooseExtractMethod('  status  ', 'DELETE'), 'ExtractFieldFromResponse');
+  assert.equal(chooseExtractMethod('id', 'GET'), 'ExtractFieldAsync');
+  assert.equal(chooseExtractMethod('data.token', 'POST'), 'ExtractFieldAsync');
+  assert.equal(chooseExtractMethod('  status  ', 'DELETE'), 'ExtractFieldAsync');
 });
 
 test('chooseExtractMethod validates by verb when NO response field is selected', () => {
   // DELETE passes on 200/204; every other verb (GET 200, POST 201, PUT, PATCH) on 200/201.
-  assert.equal(chooseExtractMethod(undefined, 'DELETE'), 'ValidateDeleteResponseAsync');
-  assert.equal(chooseExtractMethod('', 'delete'), 'ValidateDeleteResponseAsync'); // case tolerant
-  assert.equal(chooseExtractMethod(undefined, 'GET'), 'ValidateResponseAsync');
-  assert.equal(chooseExtractMethod('', 'POST'), 'ValidateResponseAsync');
-  assert.equal(chooseExtractMethod('   ', 'PUT'), 'ValidateResponseAsync'); // whitespace-only = no field
-  assert.equal(chooseExtractMethod(undefined, undefined), 'ValidateResponseAsync');
+  assert.equal(chooseExtractMethod(undefined, 'DELETE'), 'ValidateDeleted_200_204Async');
+  assert.equal(chooseExtractMethod('', 'delete'), 'ValidateDeleted_200_204Async'); // case tolerant
+  assert.equal(chooseExtractMethod(undefined, 'GET'), 'ValidateSuccess_200_201Async');
+  assert.equal(chooseExtractMethod('', 'POST'), 'ValidateSuccess_200_201Async');
+  assert.equal(chooseExtractMethod('   ', 'PUT'), 'ValidateSuccess_200_201Async'); // whitespace-only = no field
+  assert.equal(chooseExtractMethod(undefined, undefined), 'ValidateSuccess_200_201Async');
+});
+
+test('NAME-1: every pre-rename name maps to a method that exists in all 3 seeded libraries', () => {
+  // A test case saved before the rename stores the OLD method name. Without the translation the step
+  // resolves to nothing and the generated file calls a method the library no longer defines.
+  const retired = [
+    'ExtractFieldFromResponse', 'ExtractTokenFromResponse', 'ParseJsonResponse', 'DeleteByParamAsync',
+    'PostMultipartAsync', 'ValidateResponseAsync', 'ValidateDeleteResponseAsync',
+    'ValidateBadRequestResponseAsync', 'ValidateUnauthorizedResponseAsync', 'ValidateForbiddenResponseAsync',
+    'ValidateNotFoundResponseAsync', 'ValidateConflictResponseAsync', 'ValidateValidationErrorResponseAsync',
+  ];
+  const csharp = new Set(getDefaultApiMethodLibrary('csharp').map((m) => m.methodName));
+  for (const old of retired) {
+    const now = canonicalMethodName(old);
+    assert.notEqual(now, old, `${old} must translate to its new name`);
+    assert.ok(csharp.has(now), `${old} -> ${now} must exist in the library`);
+  }
+  // An unknown or custom name is left exactly as the user wrote it.
+  assert.equal(canonicalMethodName('MyOwnHelperAsync'), 'MyOwnHelperAsync');
+  assert.equal(canonicalMethodName(undefined), '');
 });
 
 test('every send method chooseSendMethod returns exists in all 3 seeded libraries', () => {

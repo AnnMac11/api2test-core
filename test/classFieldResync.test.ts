@@ -1,10 +1,13 @@
 /**
- * RB-4 — ApiClassLibraryService.resyncClassFields. A class stores its OWN snapshot of fields, copied
- * once when the class is added; after the user assigns a newly-added data method in the Data Dictionary
- * the snapshot goes stale. "Update & Generate" re-pulls the class's fields from the current dictionary
- * (matched by sourceEndpointId) before generating. This drives that re-sync against an in-memory store
- * and pins a FULL re-sync: assignment updated, new field added, removed field dropped, other endpoints
- * left alone.
+ * RB-4 / CLS-7 — ApiClassLibraryService.resyncClassFields. A class stores its OWN snapshot of fields,
+ * copied when the class is added; the snapshot goes stale once the user assigns a data method in the
+ * Data Dictionary or re-imports the spec. "Update & Generate" rebuilds it before generating.
+ *
+ * The rebuild takes its SHAPE from the endpoint and its VALUES from the dictionary by name — it must
+ * never filter the dictionary by `sourceEndpointId`. That link is one-to-one over a many-to-many
+ * relationship: the dictionary de-duplicates by field name across all endpoints, so a field an earlier
+ * endpoint imported first is owned by that endpoint and invisible to this one. Filtering by it emptied
+ * PetStore `placeOrder` completely (CLS-7). These tests drive the real path against an in-memory store.
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
@@ -32,8 +35,15 @@ function memStore(seed: Record<string, any[]> = {}) {
   };
 }
 
-// A class whose stored snapshot is STALE: `email` unassigned, and a `legacy` field that has since been
-// removed from the dictionary.
+/** The endpoint as it stands today: `firstName` has appeared, `legacy` is long gone. */
+const ENDPOINT = {
+  id: 'ep1', name: 'Create Customer', application: 'Stripe', endpoint: '/customers', path: '/customers',
+  method: 'POST', contentType: 'application/json',
+  requestBodySchema: '{"type":"object","properties":{"email":{"type":"string"},"firstName":{"type":"string"}},"required":["email"]}',
+};
+
+// A class whose stored snapshot is STALE: `email` unassigned, and a `legacy` field the endpoint no
+// longer has. Its own `requestBodySchema` is stale too — the endpoint is the source when one is given.
 const STALE_CLASS = {
   id: 'cls1', endpointId: 'ep1', className: 'StripeCreateCustomer', application: 'Stripe',
   method: 'POST', endpoint: '/customers', requestBodySchema: '', contentType: 'application/json',
@@ -44,41 +54,74 @@ const STALE_CLASS = {
   ],
 };
 
-// The CURRENT dictionary: email is now assigned RandomEmail, a new firstName field appeared, legacy is
-// gone, and a field belonging to a DIFFERENT endpoint must be ignored.
+// The CURRENT dictionary. `email` is now assigned — and deliberately owned by a DIFFERENT endpoint, as
+// it would be if another API had imported it first. Under the old sourceEndpointId filter that row was
+// invisible here and the class came back empty; the assignment must still be copied across by name.
 const DICTIONARY = [
-  { fieldName: 'email', fieldType: 'string', mandatory: true, dataMethod: 'RandomEmail', sourceEndpointId: 'ep1' },
-  { fieldName: 'firstName', fieldType: 'string', mandatory: false, dataMethod: 'FirstName', sourceEndpointId: 'ep1' },
+  { fieldName: 'email', fieldType: 'string', mandatory: true, dataMethod: 'RandomEmail', dataMethodArgs: '', sourceEndpointId: 'ep-other' },
+  { fieldName: 'firstName', fieldType: 'string', mandatory: false, dataMethod: 'FirstName', dataMethodArgs: '', sourceEndpointId: 'ep-other' },
   { fieldName: 'unrelated', fieldType: 'string', mandatory: false, dataMethod: 'Nope', sourceEndpointId: 'ep2' },
 ];
 
-test('resyncClassFields: full re-sync — assignment updated, field added, removed field dropped, other endpoints ignored', async () => {
-  const store = memStore({ 'api-class-library.json': [STALE_CLASS] });
-  const svc = new ApiClassLibraryService(store as any);
+function svcWith(classes: any[] = [STALE_CLASS]) {
+  const store = memStore({ 'api-class-library.json': classes, 'data-dictionary.json': DICTIONARY });
+  return { store, svc: new ApiClassLibraryService(store as any) };
+}
 
-  const updated = await svc.resyncClassFields('cls1', DICTIONARY as any);
+test('resyncClassFields: full refresh — assignment copied by name, field added, removed field dropped, other fields ignored', async () => {
+  const { svc } = svcWith();
+
+  const updated = await svc.resyncClassFields('cls1', ENDPOINT as any);
   assert.ok(updated, 'returns the updated entry');
 
-  // Field NAMES: firstName added, legacy dropped, unrelated (ep2) never pulled in.
+  // Field NAMES come from the ENDPOINT: firstName added, legacy dropped, `unrelated` never pulled in.
   assert.deepEqual(updated!.fields.map(f => f.fieldName), ['email', 'firstName']);
 
-  // The stale `email` assignment is refreshed to the now-assigned method.
+  // CLS-7: the assignment is copied even though the dictionary row belongs to another endpoint.
   assert.equal(updated!.fields.find(f => f.fieldName === 'email')!.dataMethod, 'RandomEmail');
 
-  // Persisted, not just returned — a fresh read reflects the re-sync.
+  // Persisted, not just returned — a fresh read reflects the refresh.
   const persisted = await svc.getClassById('cls1');
   assert.deepEqual(persisted!.fields.map(f => f.fieldName), ['email', 'firstName']);
   assert.equal(persisted!.fields.find(f => f.fieldName === 'firstName')!.dataMethod, 'FirstName');
 
-  // Header metadata is untouched by the field re-sync.
+  // The endpoint's own spec wins for shape: `email` is required there.
+  assert.equal(persisted!.fields.find(f => f.fieldName === 'email')!.mandatory, true);
+
+  // Identity is untouched by a field refresh; the spec-derived metadata is re-taken.
   assert.equal(persisted!.className, 'StripeCreateCustomer');
   assert.equal(persisted!.endpointId, 'ep1');
+  assert.equal(persisted!.requestBodySchema, ENDPOINT.requestBodySchema, 'a re-imported spec is picked up too');
+});
+
+test('resyncClassFields: a field with no dictionary row stays Not Assigned rather than being dropped', async () => {
+  const { svc } = svcWith();
+  const withExtra = {
+    ...ENDPOINT,
+    requestBodySchema: '{"type":"object","properties":{"email":{"type":"string"},"nickname":{"type":"string"}},"required":[]}',
+  };
+
+  const updated = await svc.resyncClassFields('cls1', withExtra as any);
+
+  assert.deepEqual(updated!.fields.map(f => f.fieldName), ['email', 'nickname']);
+  assert.equal(updated!.fields.find(f => f.fieldName === 'nickname')!.dataMethod, NOT_ASSIGNED);
+});
+
+test('resyncClassFields: with no endpoint (source deleted) it refreshes from the class\'s own stored schema', async () => {
+  // A class outlives its endpoint by design, so the refresh must still run — from what the entry itself
+  // recorded at add time.
+  const orphan = { ...STALE_CLASS, requestBodySchema: ENDPOINT.requestBodySchema };
+  const { svc } = svcWith([orphan]);
+
+  const updated = await svc.resyncClassFields('cls1');
+
+  assert.deepEqual(updated!.fields.map(f => f.fieldName), ['email', 'firstName']);
+  assert.equal(updated!.fields.find(f => f.fieldName === 'email')!.dataMethod, 'RandomEmail');
 });
 
 test('resyncClassFields: unknown id returns undefined and writes nothing', async () => {
-  const store = memStore({ 'api-class-library.json': [STALE_CLASS] });
-  const svc = new ApiClassLibraryService(store as any);
-  const result = await svc.resyncClassFields('nope', DICTIONARY as any);
+  const { svc } = svcWith();
+  const result = await svc.resyncClassFields('nope', ENDPOINT as any);
   assert.equal(result, undefined);
   // The existing class is untouched.
   const untouched = await svc.getClassById('cls1');

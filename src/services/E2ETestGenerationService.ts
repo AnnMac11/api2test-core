@@ -1,7 +1,7 @@
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, TestFramework, E2EGenContext } from '../models/E2EDto';
 import { librariesNs, classesNs, testsNs } from './generatedNamespaces';
 import { mapCaptureType } from './e2eCaseLogic';
-import { chooseSendMethod, chooseExtractMethod } from './e2eMethodSelection';
+import { chooseSendMethod, chooseExtractMethod, canonicalMethodName } from './e2eMethodSelection';
 import { csPropertyName } from './classNaming';
 
 /**
@@ -120,7 +120,9 @@ function classStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenCo
   lines.push(`        var url${n} = ${url};`);
 
   if (httpMethod === 'GET') {
-    lines.push(`        var ${respVar} = await ${sendMethod}<object>(token, url${n});`);
+    // GET returns the response like every other send method (SEND-1). It used to be emitted as
+    // `GetAsync<object>` — a deserialised body — which no validator or extractor could take (CS1503).
+    lines.push(`        var ${respVar} = await ${sendMethod}(token, url${n});`);
     state.lastResponse = respVar; // a GET response is capturable too (E2E-CAP-GET)
   } else if (httpMethod === 'DELETE') {
     lines.push(`        var ${respVar} = await ${sendMethod}(token, url${n});`);
@@ -147,7 +149,7 @@ function classStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenCo
 /**
  * OUT captures (E2E-CAP-1): the user's typed rows on a Class step, each capturing a response field into a
  * variable converted to the user-chosen store-as `type`. Core owns this — the client only supplies the rows.
- * One typed `ExtractFields<T>` line per row, reading THIS step's response (so later steps can use the value).
+ * One typed `ExtractFieldAsync<T>` line per row, reading THIS step's response (so later steps can use it).
  * The type is what the user selects (e.g. an id stored as `long`, a status as `string`) — unless a later step
  * pins the variable onto a typed field, in which case that field's type wins (TYPE-1, see below).
  */
@@ -162,7 +164,7 @@ function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[], state
     // (CS0266). The look-ahead that knows the destination already exists for method steps; it just never
     // reached these rows. With no typed destination the user's pick still governs.
     const type = state.varTypes?.get(variable) || mapCaptureType(c.type, 'csharp');
-    lines.push(`        var ${variable} = await ExtractFields<${type}>(${respVar}, "${(c.fieldPath || '').trim()}");`);
+    lines.push(`        var ${variable} = await ExtractFieldAsync<${type}>(${respVar}, "${(c.fieldPath || '').trim()}");`);
     emitted += 1;
   }
   return emitted;
@@ -224,8 +226,22 @@ function resolveArg(param: string, item: E2ECaseItem, state: GenState, ctx: E2EG
   return `/* ${param} */`;
 }
 
+/**
+ * Does this method need an explicit type argument at the call site? `ExtractFieldAsync` returns `Task<T>`
+ * and `ExtractBodyAs` returns `T`, with `T` appearing nowhere in either parameter list — so C# has nothing
+ * to infer from and the call must name the type. The names are accepted as well as the return type because
+ * a stored case can reference a method before its library entry has been refreshed.
+ */
+function isGenericExtractor(ref: string, returnType?: string): boolean {
+  if (ref === 'ExtractFieldAsync' || ref === 'ExtractBodyAs') return true;
+  return /(^|[^A-Za-z0-9_])T([^A-Za-z0-9_]|$)/.test(returnType || '');
+}
+
 function methodStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenContext, state: GenState, lines: string[], pairedClass?: E2ECaseItem): void {
-  const m = ctx.methods.find((x: any) => x.methodName === item.ref);
+  // A case saved before the NAME-1 rename stores the old method name; core translates it so the step still
+  // resolves to a library method and the generated call uses the name that exists today.
+  const ref = canonicalMethodName(item.ref);
+  const m = ctx.methods.find((x: any) => x.methodName === ref);
   const params: string[] = (m?.parameters || '')
     .split(',').map((p: string) => p.trim()).filter(Boolean).map((p: string) => p.split(':')[0].trim());
   const hasUrlTemplate = params.some((p: string) => { const lp = p.toLowerCase(); return lp.includes('url') && lp.includes('template'); });
@@ -234,17 +250,19 @@ function methodStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenC
     (p.toLowerCase() === 'value' && hasUrlTemplate && phExpr) ? phExpr : resolveArg(p, item, state, ctx, pairedClass));
   const awaited = isAsync(m?.returnType) ? 'await ' : '';
   const resultVar = producedVar(item, n);
-  // Option 1: a field-extracting method whose captured variable feeds a TYPED (non-string) request field is
-  // emitted as the generic `ExtractField<T>` so the value is captured in its native type (e.g. a decimal id),
-  // dropping into that field with no conversion. Everything else keeps the plain string extractor.
-  const extractsField = params.some((p: string) => { const lp = p.toLowerCase(); return lp.includes('field') || lp.includes('path'); });
-  const wantType = extractsField ? state.varTypes?.get(resultVar) : undefined;
-  const emitRef = wantType ? `ExtractFields<${wantType}>` : item.ref;
+  // Option 1: a generic extractor captures the value in its native type, so a captured id drops into a
+  // typed request field with no conversion. C# cannot infer `T` from the arguments, so the type argument is
+  // ALWAYS written: the variable's pinned destination type where there is one (TYPE-1), else the extractor's
+  // natural default — one field is a scalar (`string`), a whole body is not (`object`).
+  const extractsField = params.some((p: string) => p.toLowerCase().includes('field') || p.toLowerCase().includes('path'));
+  const emitRef = isGenericExtractor(ref, m?.returnType)
+    ? `${ref}<${state.varTypes?.get(resultVar) || (extractsField ? 'string' : 'object')}>`
+    : ref;
   const call = `${emitRef}(${args.join(', ')})`;
 
-  lines.push(`        // Step ${n}: ${item.ref}`);
+  lines.push(`        // Step ${n}: ${ref}`);
   if (pairedClass) overrideComment(pairedClass, ctx, state).forEach(c => lines.push(c));
-  if (/^validate/i.test(item.ref) && returnsBool(m?.returnType)) {
+  if (/^validate/i.test(ref) && returnsBool(m?.returnType)) {
     lines.push(`        ${assertTrue(f, `${awaited}${call}`)}`);
   } else {
     lines.push(`        var ${resultVar} = ${awaited}${call};`);
@@ -255,10 +273,11 @@ function methodStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenC
 /** Generate a framework-correct, compilable C# test file from one ordered E2E chain. */
 export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EGenContext): string {
   const f = page.framework;
-  const tokenObj = ctx.methods.find((m: any) => m.methodName === page.token);
+  const tokenRef = canonicalMethodName(page.token);
+  const tokenObj = ctx.methods.find((m: any) => m.methodName === tokenRef);
   const tokenLine = isAsync(tokenObj?.returnType)
-    ? `        var token = await ${page.token}();`
-    : `        var token = ${page.token}();`;
+    ? `        var token = await ${tokenRef}();`
+    : `        var token = ${tokenRef}();`;
 
   const state: GenState = { lastResponse: null, tipShown: false };
 

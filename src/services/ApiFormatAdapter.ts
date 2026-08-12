@@ -22,8 +22,14 @@ export class ApiFormatAdapter {
         }
     }
     
-    // Convert UnifiedApiDto to ApiMethodDto (our internal format)
-    toApiMethodDto(unified: UnifiedApiDto, source: ApiFormat, application: string): ApiMethodDto {
+    /**
+     * Convert UnifiedApiDto to ApiMethodDto (our internal format).
+     *
+     * @param application - Display name of the application being imported into.
+     * @param applicationId - Its stable id (APP-ID-IMPORT). Optional so existing callers keep
+     * compiling, but every import path should pass it: the name alone breaks on a rename.
+     */
+    toApiMethodDto(unified: UnifiedApiDto, source: ApiFormat, application: string, applicationId?: string): ApiMethodDto {
         // Filter out 'unknown' format
         const validSource = source === 'unknown' ? 'postman' : source;
         
@@ -36,6 +42,7 @@ export class ApiFormatAdapter {
             parameters: this.formatParameters(unified.parameters),
             returnType: 'Task<HttpResponseMessage>',
             application: application,
+            applicationId: applicationId,
             createdDate: new Date().toISOString(),
             isCustom: false,
             fileName: `${application}.${validSource}`,
@@ -47,7 +54,8 @@ export class ApiFormatAdapter {
             requestHeaders: this.formatHeaders(unified.headers),
             contentType: this.detectContentType(unified),
             parameterDetails: unified.parameterDetails || [],
-            requestBodySchema: unified.requestBodySchema ? JSON.stringify(unified.requestBodySchema) : ''
+            requestBodySchema: unified.requestBodySchema ? JSON.stringify(unified.requestBodySchema) : '',
+            responseBodySchema: unified.responseBodySchema ? JSON.stringify(unified.responseBodySchema) : ''
         };
     }
     
@@ -96,9 +104,14 @@ export class ApiFormatAdapter {
 
         if (!spec.paths) { return endpoints; }
 
-        const baseUrl = spec.servers?.[0]?.url || spec.host
-            ? `${spec.schemes?.[0] || 'https'}://${spec.host}${spec.basePath || ''}`
-            : '';
+        // OpenAPI v3 states the server outright; Swagger v2 assembles it from scheme + host + basePath.
+        // (`||` binds tighter than `?:`, so writing this as one ternary silently produced
+        //  "https://undefined/v1/customers" for every v3 spec — v3 has servers but no `host`.)
+        // The trailing slash is trimmed because every path already starts with one — Stripe declares
+        // "https://api.stripe.com/", which otherwise yields "https://api.stripe.com//v1/customers".
+        const baseUrl = (spec.servers?.[0]?.url
+            || (spec.host ? `${spec.schemes?.[0] || 'https'}://${spec.host}${spec.basePath || ''}` : '')
+        ).replace(/\/+$/, '');
 
         for (const [path, pathItem] of Object.entries(spec.paths)) {
             for (const [method, operation] of Object.entries(pathItem as any)) {
@@ -126,6 +139,13 @@ export class ApiFormatAdapter {
                 const responseExample = respJson?.example
                     || this.generateExampleFromSchema(spec, respJson?.schema || resp?.schema);
 
+                // The example above is a flattened skeleton — every array in it is `[]` — so it
+                // cannot say what an array element holds. Keep the schema itself as well, resolved
+                // the same way the request body is: for a GET there is no request body, so this is
+                // the ONLY record of the endpoint's shape.
+                const responseBodySchema =
+                    this.resolveSchemaTree(spec, respJson?.schema || resp?.schema, new Set());
+
                 endpoints.push({
                     name,
                     method: method.toUpperCase(),
@@ -135,6 +155,7 @@ export class ApiFormatAdapter {
                     headers: bodyMediaType ? { 'Content-Type': bodyMediaType } : {},
                     requestBody,
                     responseExample,
+                    responseBodySchema,
                     requestBodySchema: this.resolveBodySchema(spec, op),
                     parameters: this.extractOpenApiParams(op.parameters),
                     parameterDetails: this.extractParameterDetails(op.parameters)
@@ -242,16 +263,42 @@ export class ApiFormatAdapter {
     }
 
     /**
-     * Recursively inlines `$ref`s in a schema, producing a self-contained tree of
-     * `{ type, properties?, items? }`. A `seen` set guards against recursive schemas.
+     * How far `$ref` inlining goes, and how many nodes it may produce for one schema.
+     *
+     * The `seen` guard below is per-*path*, not global — a branch gets its own copy so that a type
+     * used in two places is expanded in both. That is what we want for shape fidelity, but on a real
+     * spec it is combinatorial: Stripe's response graph (Customer → subscriptions → plan → product →
+     * …, ~50 properties a node) exhausted an 8 GB heap and the import simply never finished, with no
+     * error to show for it. These two limits bound it.
+     *
+     * Depth 3 is sized to what actually reads these trees: a top-level field (1), its array items
+     * (2), and the element's members (3). Deeper than that nothing renders it. The node budget then
+     * caps the breadth. Measured on Stripe's 7.9 MB spec (589 endpoints): 99 ms and 5.7 MB of resolved
+     * response schema at these limits, against 16 MB at depth 4 and an exhausted heap at neither.
      */
-    private resolveSchemaTree(spec: any, schema: any, seen: Set<string>): any {
+    private static readonly MAX_SCHEMA_DEPTH = 3;
+    private static readonly MAX_SCHEMA_NODES = 300;
+
+    /**
+     * Recursively inlines `$ref`s in a schema, producing a self-contained tree of
+     * `{ type, properties?, items? }`. A `seen` set guards against recursive schemas; `depth` and
+     * `budget` guard against merely enormous ones (see the limits above). Where a limit is hit the
+     * node degrades to a bare `{ type }` — the same shape the cycle guard already emits — so callers
+     * need no new handling.
+     */
+    private resolveSchemaTree(spec: any, schema: any, seen: Set<string>, depth = 0,
+        budget: { nodes: number } = { nodes: ApiFormatAdapter.MAX_SCHEMA_NODES }): any {
         if (!schema) { return null; }
+        if (depth > ApiFormatAdapter.MAX_SCHEMA_DEPTH || budget.nodes <= 0) {
+            return { type: schema.type === 'array' ? 'array' : 'object' };
+        }
+        budget.nodes--;
         if (schema.$ref) {
             if (seen.has(schema.$ref)) { return { type: 'object' }; } // cycle guard
             seen.add(schema.$ref);
             const resolved = this.resolveRef(spec, schema.$ref);
-            return this.resolveSchemaTree(spec, resolved, seen);
+            // Following a `$ref` moves to the same node by another name — not a level deeper.
+            return this.resolveSchemaTree(spec, resolved, seen, depth, budget);
         }
         // Composition keywords (Stripe uses `anyOf: [<object>, {type:string, enum:['']}]` for
         // optional object fields like `address`). Prefer the object/array alternative so the
@@ -260,25 +307,25 @@ export class ApiFormatAdapter {
         if (Array.isArray(union)) {
             const best = union.find((s: any) => s && (s.$ref || s.type === 'object' || s.type === 'array' || s.properties || s.items))
                 || union[0];
-            return this.resolveSchemaTree(spec, best, new Set(seen));
+            return this.resolveSchemaTree(spec, best, new Set(seen), depth, budget);
         }
         if (Array.isArray(schema.allOf)) {
             // Merge member objects' properties into one.
             const merged: any = { type: 'object', properties: {}, required: [] };
             for (const part of schema.allOf) {
-                const r = this.resolveSchemaTree(spec, part, new Set(seen));
+                const r = this.resolveSchemaTree(spec, part, new Set(seen), depth, budget);
                 if (r && r.properties) { Object.assign(merged.properties, r.properties); }
                 if (r && Array.isArray(r.required)) { merged.required.push(...r.required); }
             }
             return merged;
         }
         if (schema.type === 'array' || schema.items) {
-            return { type: 'array', items: this.resolveSchemaTree(spec, schema.items, new Set(seen)) };
+            return { type: 'array', items: this.resolveSchemaTree(spec, schema.items, new Set(seen), depth + 1, budget) };
         }
         if (schema.type === 'object' || schema.properties) {
             const properties: Record<string, any> = {};
             for (const [key, prop] of Object.entries(schema.properties || {})) {
-                properties[key] = this.resolveSchemaTree(spec, prop, new Set(seen));
+                properties[key] = this.resolveSchemaTree(spec, prop, new Set(seen), depth + 1, budget);
             }
             // Preserve the object's `required` list so body fields can be marked mandatory.
             return { type: 'object', properties, required: Array.isArray(schema.required) ? schema.required : [] };

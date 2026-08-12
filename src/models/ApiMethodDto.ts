@@ -5,7 +5,15 @@ export interface ApiMethodDto {
     endpoint: string;
     url: string;
     description: string;
+    /** Display-only application name. Kept for readability; the rename-proof link is {@link applicationId}. */
     application: string;
+    /**
+     * Id of the application this endpoint was imported into — the authoritative, rename-proof link
+     * (APP-ID-IMPORT). Stamped by import from the application the user picked, and copied onto every
+     * class made from the endpoint. Absent only on rows imported before APP-ID-IMPORT, which fall
+     * back to matching on {@link application}.
+     */
+    applicationId?: string;
     createdDate: string;
     source?: 'postman' | 'openapi' | 'raml' | 'graphql' | 'insomnia';
     fileName?: string;
@@ -22,6 +30,12 @@ export interface ApiMethodDto {
     parameterDetails?: Array<{ name: string; type: string; location: 'path' | 'query' | 'header'; required: boolean }>;
     /** Resolved request-body schema as JSON ($refs inlined). Carries nested object/array structure. */
     requestBodySchema?: string;
+    /**
+     * Resolved 2xx response schema as JSON ($refs inlined). Where an endpoint has no request body —
+     * every GET — this is the only record of what its fields actually hold: {@link responseExamples}
+     * is a skeleton whose arrays are all `[]`.
+     */
+    responseBodySchema?: string;
 }
 
 export interface ApiMethodLibraryDto {

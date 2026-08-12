@@ -60,7 +60,7 @@ test('the TS API Method Library seed emits an apiMethods.ts that type-checks', (
 
 test('the seed provides the five class-first send helpers + extract (the E2E / TS-C7 vocabulary)', () => {
   const names = getDefaultApiMethodLibrary('typescript').map((m: any) => tsSymbol(m.methodName));
-  for (const helper of ['postJson', 'putJson', 'get', 'delete', 'postForm', 'extractFieldFromResponse']) {
+  for (const helper of ['postJson', 'putJson', 'get', 'delete', 'postForm', 'extractField']) {
     assert.ok(names.includes(helper), `seed must define send helper '${helper}'`);
   }
 });

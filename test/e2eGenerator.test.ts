@@ -3,13 +3,14 @@ import * as assert from 'node:assert/strict';
 import { generateTestForRow } from '../src/services/E2ETestGenerationService';
 import { E2EPage, E2ETestCaseRow, E2EGenContext } from '../src/models/E2EDto';
 
+// Signatures as the curated library ships them (NAME-1 names, ExtractFieldAsync generic over T).
 const methods = [
-  { methodName: 'GetStripeToken', parameters: '', returnType: 'Task<string>' },
+  { methodName: 'StripeSecretKey', parameters: '', returnType: 'Task<string>' },
   { methodName: 'StripeBaseUrl', parameters: '', returnType: 'string' },
   { methodName: 'PostFormAsync', parameters: 'token:string, url:string, formBody:string', returnType: 'Task<HttpResponseMessage>' },
-  { methodName: 'ExtractFieldFromResponse', parameters: 'response:HttpResponseMessage, fieldPath:string', returnType: 'Task<string>' },
-  { methodName: 'DeleteByParamAsync', parameters: 'token:string, urlTemplate:string, value:string', returnType: 'Task<HttpResponseMessage>' },
-  { methodName: 'ValidateDeleteResponseAsync', parameters: 'response:HttpResponseMessage', returnType: 'Task<bool>' },
+  { methodName: 'ExtractFieldAsync', parameters: 'response:HttpResponseMessage, fieldPath:string', returnType: 'Task<T>' },
+  { methodName: 'DeleteByPathValueAsync', parameters: 'token:string, urlTemplate:string, value:string', returnType: 'Task<HttpResponseMessage>' },
+  { methodName: 'ValidateDeleted_200_204Async', parameters: 'response:HttpResponseMessage', returnType: 'Task<bool>' },
 ];
 const classes = [
   { className: 'StripePostCustomers', endpoint: '/v1/customers (POST)', method: 'POST', contentType: 'application/x-www-form-urlencoded' },
@@ -17,7 +18,7 @@ const classes = [
 ];
 const ctx: E2EGenContext = { methods, classes };
 const page: E2EPage = {
-  id: 'p', name: 'Stripe', application: 'Stripe', basePath: 'StripeBaseUrl', token: 'GetStripeToken',
+  id: 'p', name: 'Stripe', application: 'Stripe', basePath: 'StripeBaseUrl', token: 'StripeSecretKey',
   framework: 'MSTest', createdDate: '', modifiedDate: '',
 };
 
@@ -26,10 +27,10 @@ test('create→delete chain generates a complete, correctly-wired MSTest file', 
     id: 'r', name: 'Stripe Customer', items: [
       { type: 'Method', ref: 'PostFormAsync' },
       { type: 'Class', ref: 'StripePostCustomers' },
-      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'customerId' },
-      { type: 'Method', ref: 'DeleteByParamAsync' },
+      { type: 'Method', ref: 'ExtractFieldAsync', args: { fieldPath: { value: 'id' } }, assignTo: 'customerId' },
+      { type: 'Method', ref: 'DeleteByPathValueAsync' },
       { type: 'Class', ref: 'StripeDeleteCustomersByCustomer', args: { customer: { value: 'customerId', isVariable: true } } },
-      { type: 'Method', ref: 'ValidateDeleteResponseAsync' },
+      { type: 'Method', ref: 'ValidateDeleted_200_204Async' },
     ],
   };
   const code = generateTestForRow(row, page, ctx);
@@ -41,9 +42,9 @@ test('create→delete chain generates a complete, correctly-wired MSTest file', 
   assert.match(code, /\[TestClass\]/);
   assert.match(code, /public class StripeCustomerTests/);
   assert.match(code, /var result1 = await PostFormAsync\(token, baseUrl \+ "\/v1\/customers", new StripePostCustomers\(\)\.ToFormBody\(\)\);/);
-  assert.match(code, /var customerId = await ExtractFieldFromResponse\(result1, "id"\);/);
-  assert.match(code, /await DeleteByParamAsync\(token, baseUrl \+ "\/v1\/customers\/\{customer\}", customerId\);/);
-  assert.match(code, /Assert\.IsTrue\(await ValidateDeleteResponseAsync\(result3\)\);/);
+  assert.match(code, /var customerId = await ExtractFieldAsync<string>\(result1, "id"\);/);
+  assert.match(code, /await DeleteByPathValueAsync\(token, baseUrl \+ "\/v1\/customers\/\{customer\}", customerId\);/);
+  assert.match(code, /Assert\.IsTrue\(await ValidateDeleted_200_204Async\(result3\)\);/);
   // No double-send: the consumed class rows must not emit their own request.
   assert.equal(/new StripeDeleteCustomersByCustomer\(\)/.test(code), false);
 });
@@ -67,8 +68,11 @@ test('class-first row (no send-method) emits each class call and binds URL place
 
   // Row 1: the POST class emits its own request + call (no separate send method needed).
   assert.match(code, /var response1 = await PostJsonAsync\(token, url1, request1\.ToJson\(\)\);/);
-  // Extract reads the POST response into the named variable.
-  assert.match(code, /var petId = await ExtractFieldFromResponse\(response1, "id"\);/);
+  // Extract reads the POST response into the named variable. NAME-1: this case's step still stores the
+  // pre-rename `ExtractFieldFromResponse` (as a case saved on an older build does), so the generator has to
+  // translate it — otherwise it resolves to no library method and emits a name that no longer exists.
+  assert.match(code, /var petId = await ExtractFieldAsync<string>\(response1, "id"\);/);
+  assert.equal(/ExtractFieldFromResponse/.test(code), false, 'the retired name must not reach the test file');
   // Row 2: the DELETE class binds {petId} from its args — the whole point of the fix.
   assert.match(code, /var url3 = baseUrl \+ "\/pet\/" \+ petId;/);
   assert.match(code, /var response3 = await DeleteAsync\(token, url3\);/);
@@ -99,7 +103,7 @@ test('send method honours the full verb+content-type matrix (PATCH, PUT-form) �
 test('a Class step with no OUT capture emits the defaulted response validation (E2E-SEL-1 response default)', () => {
   // The user's flow: "the user selects the out from the response. the response method is defaulted."
   // When NO field is captured, the class step must still assert the call succeeded — DELETE →
-  // ValidateDeleteResponseAsync, any other verb → ValidateResponseAsync. classStep used to emit the send
+  // ValidateDeleted_200_204Async, any other verb → ValidateSuccess_200_201Async. classStep used to emit the send
   // and then nothing, leaving the response un-asserted. When a field IS captured it extracts (no validate).
   const valClasses = [
     { className: 'PetPost', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json' },
@@ -115,16 +119,16 @@ test('a Class step with no OUT capture emits the defaulted response validation (
   const code = generateTestForRow(row, { ...page, application: 'Pet' }, valCtx);
 
   // Step 1 captured a field → it extracts and does NOT also emit a validate.
-  assert.match(code, /var petId = await ExtractFields<long>\(response1, "id"\);/);
-  assert.equal(/ValidateResponseAsync\(response1\)/.test(code), false, 'a captured step must not also validate');
+  assert.match(code, /var petId = await ExtractFieldAsync<long>\(response1, "id"\);/);
+  assert.equal(/ValidateSuccess_200_201Async\(response1\)/.test(code), false, 'a captured step must not also validate');
   // Step 2 captured nothing → it must default to the DELETE validation on its own response.
-  assert.match(code, /Assert\.IsTrue\(await ValidateDeleteResponseAsync\(response2\)\);/);
+  assert.match(code, /Assert\.IsTrue\(await ValidateDeleted_200_204Async\(response2\)\);/);
 });
 
 test('a capture after a GET reads the GET response (E2E-CAP-GET)', () => {
   // "GET a resource, capture a field from it, use that in the next call" is an ordinary chain. The
   // GET branch of classStep used to leave `state.lastResponse` unset, so the extract step emitted
-  // `ExtractFieldFromResponse(/* response */, "id")` — code that doesn't compile.
+  // `ExtractFieldAsync(/* response */, "id")` — code that doesn't compile.
   const getClasses = [
     { className: 'PetStoreGetPetByPetId', endpoint: '/pet/{petId} (GET)', method: 'GET' },
     { className: 'PetStoreDeletePetByPetId', endpoint: '/pet/{petId} (DELETE)', method: 'DELETE' },
@@ -132,21 +136,25 @@ test('a capture after a GET reads the GET response (E2E-CAP-GET)', () => {
   const row: E2ETestCaseRow = {
     id: 'r', name: 'Read then delete pet', items: [
       { type: 'Class', ref: 'PetStoreGetPetByPetId', args: { petId: { value: '1' } } },
-      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'capturedId' },
+      { type: 'Method', ref: 'ExtractFieldAsync', args: { fieldPath: { value: 'id' } }, assignTo: 'capturedId' },
       { type: 'Class', ref: 'PetStoreDeletePetByPetId', args: { petId: { value: 'capturedId', isVariable: true } } },
     ],
   };
   const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, { methods, classes: getClasses });
 
-  assert.match(code, /var response1 = await GetAsync<object>\(token, url1\);/);
-  assert.match(code, /var capturedId = await ExtractFieldFromResponse\(response1, "id"\);/,
+  // A GET step is a send like any other: it produces the RESPONSE, which the extract then reads. It
+  // used to be emitted as `GetAsync<object>` — a deserialised body handed to a method that takes an
+  // HttpResponseMessage, so the file never compiled (CS1503).
+  assert.match(code, /var response1 = await GetAsync\(token, url1\);/);
+  assert.equal(/GetAsync</.test(code), false, 'a GET returns the response, not a deserialised body');
+  assert.match(code, /var capturedId = await ExtractFieldAsync<string>\(response1, "id"\);/,
     'the extract must read the GET response');
   assert.equal(/\/\* response \*\//.test(code), false, 'no unwired response placeholder anywhere');
 });
 
 test('Option 1: a captured value feeding a TYPED field is extracted in that native type (no conversion)', () => {
   // POST pet → extract id → POST order with { PetId = <captured id> }. The order's PetId is a decimal, so the
-  // capture must be `ExtractField<decimal>` (native), NOT the string extractor + a string→number cast.
+  // capture must be `ExtractFieldAsync<decimal>` (native), NOT a string extract + a string→number cast.
   const petClasses = [
     { className: 'PetStorePostPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json',
       classCode: 'public class PetStorePostPet { public string Name { get; set; } }' },
@@ -157,20 +165,21 @@ test('Option 1: a captured value feeding a TYPED field is extracted in that nati
   const row: E2ETestCaseRow = {
     id: 'r', name: 'Order chain', items: [
       { type: 'Class', ref: 'PetStorePostPet' },
-      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
+      { type: 'Method', ref: 'ExtractFieldAsync', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
       { type: 'Class', ref: 'PetStorePostStoreOrder', overrides: { PetId: { value: 'petId', isVariable: true } } },
     ],
   };
   const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
 
   // Captured in the native decimal type (no string→number conversion at the use site).
-  assert.match(code, /var petId = await ExtractFields<decimal>\(response1, "id"\);/);
+  assert.match(code, /var petId = await ExtractFieldAsync<decimal>\(response1, "id"\);/);
   assert.match(code, /new PetStorePostStoreOrder\(\)\s*\{ PetId = petId \}/);
   assert.equal(/\.Parse\(petId\)/.test(code), false, 'no conversion at the assignment');
 });
 
-test('a captured value used only in a URL stays the string extractor (no typing needed)', () => {
+test('a captured value used only in a URL stays a string capture (no typing needed)', () => {
   // GetById uses the captured id in the URL (string concat) — no typed field consumes it, so it stays string.
+  // The extractor is generic either way (C# cannot infer T), so what varies is the type argument, not the method.
   const petCtx: E2EGenContext = {
     methods,
     classes: [
@@ -181,16 +190,16 @@ test('a captured value used only in a URL stays the string extractor (no typing 
   const row: E2ETestCaseRow = {
     id: 'r', name: 'Create then get', items: [
       { type: 'Class', ref: 'PetStorePostPet' },
-      { type: 'Method', ref: 'ExtractFieldFromResponse', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
+      { type: 'Method', ref: 'ExtractFieldAsync', args: { fieldPath: { value: 'id' } }, assignTo: 'petId' },
       { type: 'Class', ref: 'PetStoreGetPetByPetId', args: { petId: { value: 'petId', isVariable: true } } },
     ],
   };
   const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
-  assert.match(code, /var petId = await ExtractFieldFromResponse\(response1, "id"\);/);
-  assert.equal(/ExtractField</.test(code), false);
+  assert.match(code, /var petId = await ExtractFieldAsync<string>\(response1, "id"\);/);
+  assert.equal(/ExtractFieldAsync<(?!string>)/.test(code), false, 'nothing pins the variable, so nothing overrides string');
 });
 
-test('E2E-CAP-1: a Class step\'s typed OUT capture rows each generate one ExtractFields<T> line, mapping the semantic type to the C# type (core processes the rows)', () => {
+test('E2E-CAP-1: a Class step\'s typed OUT capture rows each generate one ExtractFieldAsync<T> line, mapping the semantic type to the C# type (core processes the rows)', () => {
   // New model: the user selects OUT rows (field · variable · store-as type) on the Class step; core turns
   // each into a typed extract line reading that step's response. The client sends the EDITION-AGNOSTIC
   // semantic type (`string`/`number`/`bool`/`Guid`) and core maps it to the concrete C# type — `number`
@@ -212,14 +221,14 @@ test('E2E-CAP-1: a Class step\'s typed OUT capture rows each generate one Extrac
     ],
   };
   const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
-  assert.match(code, /var petId = await ExtractFields<decimal>\(response1, "id"\);/, 'number → C# decimal');
-  assert.match(code, /var petStatus = await ExtractFields<string>\(response1, "status"\);/, 'string → C# string');
-  assert.match(code, /var petSold = await ExtractFields<bool>\(response1, "sold"\);/, 'bool → C# bool');
-  assert.match(code, /var petUuid = await ExtractFields<Guid>\(response1, "uuid"\);/, 'Guid → C# Guid');
+  assert.match(code, /var petId = await ExtractFieldAsync<decimal>\(response1, "id"\);/, 'number → C# decimal');
+  assert.match(code, /var petStatus = await ExtractFieldAsync<string>\(response1, "status"\);/, 'string → C# string');
+  assert.match(code, /var petSold = await ExtractFieldAsync<bool>\(response1, "sold"\);/, 'bool → C# bool');
+  assert.match(code, /var petUuid = await ExtractFieldAsync<Guid>\(response1, "uuid"\);/, 'Guid → C# Guid');
 });
 
 test('framework selection switches attributes + usings', () => {
-  const row: E2ETestCaseRow = { id: 'r', name: 'Smoke', items: [{ type: 'Method', ref: 'ValidateDeleteResponseAsync' }] };
+  const row: E2ETestCaseRow = { id: 'r', name: 'Smoke', items: [{ type: 'Method', ref: 'ValidateDeleted_200_204Async' }] };
   const xunit = generateTestForRow(row, { ...page, framework: 'xUnit' }, ctx);
   assert.match(xunit, /using Xunit;/);
   assert.match(xunit, /\[Fact\]/);

@@ -5,6 +5,7 @@ import {
   getDefaultApiMethodLibrary,
   mergeDefaults,
 } from '../src/data/defaultLibraries';
+import { chooseSendMethod, chooseExtractMethod } from '../src/services/e2eMethodSelection';
 
 test('csharp libraries return the canonical built-in sets', () => {
   assert.equal(getDefaultDataLibrary('csharp').length, 100);
@@ -14,12 +15,12 @@ test('csharp libraries return the canonical built-in sets', () => {
 test('csharp api-method library includes the negative-response validators', () => {
   const names = new Set(getDefaultApiMethodLibrary('csharp').map((m) => m.methodName));
   for (const v of [
-    'ValidateBadRequestResponseAsync',       // 400
-    'ValidateUnauthorizedResponseAsync',     // 401
-    'ValidateForbiddenResponseAsync',        // 403
-    'ValidateNotFoundResponseAsync',         // 404
-    'ValidateConflictResponseAsync',         // 409
-    'ValidateValidationErrorResponseAsync',  // 422
+    'ValidateBadRequest_400Async',
+    'ValidateUnauthorized_401Async',
+    'ValidateForbidden_403Async',
+    'ValidateNotFound_404Async',
+    'ValidateConflict_409Async',
+    'ValidateValidationError_422Async',
   ]) {
     assert.ok(names.has(v), `expected negative validator ${v}`);
   }
@@ -27,7 +28,7 @@ test('csharp api-method library includes the negative-response validators', () =
 
 test('csharp wrapper library uses the names the generators emit', () => {
   const names = new Set(getDefaultApiMethodLibrary('csharp').map((m) => m.methodName));
-  for (const expected of ['PostJsonAsync', 'PostFormAsync', 'PostMultipartAsync', 'GetAsync']) {
+  for (const expected of ['PostJsonAsync', 'PostFormAsync', 'UploadFileAsync', 'GetAsync']) {
     assert.ok(names.has(expected), `expected wrapper ${expected}`);
   }
 });
@@ -44,15 +45,15 @@ test('every body verb × content-type has a send method (PUT/PATCH form + PATCH 
 });
 
 test('typescript api-method library is at validator parity with csharp/python', () => {
-  // TS previously lagged: it lacked Validate{Delete,Forbidden,Conflict,ValidationError}ResponseAsync,
-  // so chooseExtractMethod's DELETE default (ValidateDeleteResponseAsync) would return a dead name in TS.
+  // TS previously lagged: it lacked the delete/forbidden/conflict/validation-error validators, so
+  // chooseExtractMethod's DELETE default would return a name that doesn't exist in TS.
   assert.equal(getDefaultApiMethodLibrary('typescript').length, 22);
   const names = new Set(getDefaultApiMethodLibrary('typescript').map((m) => m.methodName));
   for (const v of [
-    'ValidateDeleteResponseAsync',           // 200/204 — the DELETE extract default
-    'ValidateForbiddenResponseAsync',        // 403
-    'ValidateConflictResponseAsync',         // 409
-    'ValidateValidationErrorResponseAsync',  // 422
+    'ValidateDeleted_200_204Async',      // the DELETE extract default
+    'ValidateForbidden_403Async',
+    'ValidateConflict_409Async',
+    'ValidateValidationError_422Async',
   ]) {
     assert.ok(names.has(v), `typescript: expected validator ${v}`);
   }
@@ -62,8 +63,63 @@ test('every validator chooseExtractMethod can pick exists in all 3 languages', (
   // The by-verb extract defaults: DELETE -> 200/204, everything else -> 200/201.
   for (const lang of ['csharp', 'python', 'typescript'] as const) {
     const names = new Set(getDefaultApiMethodLibrary(lang).map((m) => m.methodName));
-    for (const v of ['ValidateResponseAsync', 'ValidateDeleteResponseAsync', 'ExtractFieldFromResponse']) {
+    // Taken from chooseExtractMethod itself, so a rename on one side can't drift from the other.
+    for (const v of [chooseExtractMethod('', 'GET'), chooseExtractMethod('', 'DELETE'), chooseExtractMethod('id')]) {
       assert.ok(names.has(v), `${lang}: expected extract/validate method ${v}`);
+    }
+  }
+});
+
+test('SEND-1: every send method hands its follow-up the response type that follow-up declares', () => {
+  // The generated step is always `send(...)` → `Validate*(response)` / `ExtractField*(response, …)`.
+  // That only compiles when the send RETURNS what the follow-up TAKES. `GetAsync` was the one helper
+  // that returned the deserialised payload instead of the response, so every GET step in every
+  // generated test failed to compile (CS1503: cannot convert from 'object' to HttpResponseMessage),
+  // and its internal EnsureSuccessStatusCode/raise_for_status meant a GET could never be validated at
+  // all — a negative 404 test threw before the validator ran. This pins the contract for all 5 verbs.
+  const responseType: Record<string, RegExp> = {
+    csharp: /HttpResponseMessage/i,
+    python: /HttpResponseMessage/i,   // python entries carry the shared C#-style type strings
+    typescript: /\bResponse\b/,
+  };
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    const methods = getDefaultApiMethodLibrary(lang);
+    for (const verb of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+      const send = methods.find((m) => m.methodName === chooseSendMethod(verb));
+      assert.ok(send, `${lang}: no library method for ${verb}`);
+      assert.match(send!.returnType || '', responseType[lang],
+        `${lang}: ${send!.methodName} must return the response, not a deserialised body`);
+
+      const followUp = methods.find((m) => m.methodName === chooseExtractMethod('', verb));
+      assert.ok(followUp, `${lang}: no follow-up for ${verb}`);
+      assert.match(followUp!.parameters || '', responseType[lang],
+        `${lang}: ${followUp!.methodName} takes the response ${send!.methodName} returns`);
+    }
+  }
+});
+
+test('NAME-1: library method names say what they do — no stale names survive', () => {
+  // The names are the API the user picks from in the builder, so they have to read as the action and
+  // (for a validator) the status code it accepts. These are the names that were replaced.
+  const retired = [
+    'ExtractFieldFromResponse', 'ExtractTokenFromResponse', 'ParseJsonResponse',
+    'DeleteByParamAsync', 'PostMultipartAsync',
+    'ValidateResponseAsync', 'ValidateDeleteResponseAsync', 'ValidateBadRequestResponseAsync',
+    'ValidateUnauthorizedResponseAsync', 'ValidateForbiddenResponseAsync', 'ValidateNotFoundResponseAsync',
+    'ValidateConflictResponseAsync', 'ValidateValidationErrorResponseAsync',
+    'petstoreTestBasePath', 'petstoreTestToken', 'stripeTestBasePath', 'stripeTestToken',
+  ];
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    const names = new Set(getDefaultApiMethodLibrary(lang).map((m) => m.methodName));
+    for (const old of retired) {
+      assert.equal(names.has(old), false, `${lang}: retired name ${old} is still shipped`);
+    }
+  }
+  // Every validator names its status code(s), so the dropdown reads right without the description.
+  for (const lang of ['csharp', 'python', 'typescript'] as const) {
+    for (const m of getDefaultApiMethodLibrary(lang)) {
+      if (!/^Validate/.test(m.methodName)) { continue; }
+      assert.match(m.methodName, /_\d{3}(_\d{3})?Async$/, `${lang}: ${m.methodName} must carry its status code`);
     }
   }
 });
