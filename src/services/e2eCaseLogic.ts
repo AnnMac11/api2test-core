@@ -115,15 +115,15 @@ export function friendlyMethodName(ref: string): string {
  * `string`. Anything already concrete (e.g. `long`, `int`, `decimal` from the Option-1 look-ahead) passes
  * through unchanged, so a power user's explicit type still works.
  */
-export type CaptureLang = 'csharp' | 'typescript';
+export type CaptureLang = 'csharp' | 'typescript' | 'python';
 export function mapCaptureType(type: string | undefined, lang: CaptureLang): string {
   const t = (type || 'string').trim() || 'string';
   switch (t.toLowerCase()) {
-    case 'number': return lang === 'csharp' ? 'decimal' : 'number';
+    case 'number': return lang === 'csharp' ? 'decimal' : lang === 'python' ? 'float' : 'number';
     case 'bool':
-    case 'boolean': return lang === 'csharp' ? 'bool' : 'boolean';
-    case 'guid': return lang === 'csharp' ? 'Guid' : 'string';
-    case 'string': return 'string';
+    case 'boolean': return lang === 'typescript' ? 'boolean' : 'bool';
+    case 'guid': return lang === 'csharp' ? 'Guid' : lang === 'python' ? 'str' : 'string';
+    case 'string': return lang === 'python' ? 'str' : 'string';
     default: return t; // already a concrete language type — pass through untouched
   }
 }

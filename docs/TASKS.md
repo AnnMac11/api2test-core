@@ -460,8 +460,16 @@ against core. Bug-first per task; coordinate version bumps.
   no-orphaned-category — both shown failing on the real drifted seed, green after the fix.
   `test/methodScope.test.ts` (5). Build clean, 193/193 green. VS Code SP3-1 + Desktop
   (drop `constants/values.ts` taxonomy + the TestCasesPage local rule) are thin ports.
-- [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do
-  after the TS extension path proves out.
+- [x] **PY-1 — Python emitters + pytest runner. DONE 2026-08-12 (branch `develop`).** Emitters
+  delivered under PY-GEN-1 (same session). Runner half in `TestRunnerService.ts`, parallel to the
+  dotnet/Vitest paths: **`parseJUnitXml`** (pytest `--junit-xml` → `RawTestResult[]`; JUnit keeps stdout
+  per testcase, so `##A2T_CALL##` markers attribute per test for free — no custom reporter like TS-C2),
+  **`runPyCompile`** (`python -m compileall -q`, stdlib-only so missing `requests`/`faker` can't fail
+  validation) and **`runPytest`** (`python -m pytest -q --junit-xml … -o junit_logging=out-err`, `-k`
+  filter) returning `PytestRun { results, calls }`. `BUILD_VALIDATORS.python` wired in `deployUnit.ts`;
+  all exported from `index.ts`. Bug-first: `test/pytestRunner.test.ts` RED first — and it caught a real
+  bug (`name=` attr regex matched the tail of `classname=`; anchored). Live-pytest test skips when
+  pytest is absent; `runPyCompile` runs against the real interpreter.
 
 ### Class status model (CLS series) — added 2026-07-17
 
@@ -659,7 +667,36 @@ grouping — `groupIntoCalls`, `isSendMethod`, `stepIncomplete`, `friendlyMethod
     input), `e2eTypeScript.test.ts` (incl. `Guid`→`string`). **218/218 green, build clean.** _Remaining:_
     clients (VS Code RB-8/RB-5 multi-row typed OUT UI; Desktop drop `addOutputParam`→`captures[]`), then
     SEL-1 helpers, then Python (PY-GEN-1).
-- [ ] **PY-GEN-1 — Python E2E + API-method generator in core (new, 2026-07-25, user-requested).** Core
+- [x] **PY-GEN-1 — Python E2E + API-method generator in core. DONE 2026-08-12 (branch `develop`).**
+  Full Python emitter suite, mirroring the TS one file-for-file:
+  - **`PythonEmitter`** (`src/adapters/PythonEmitter.ts`, wired in `emitterFor('python')` + the adapters
+    barrel): `py` extension, `api_methods.py`/`data_generator.py` library names, `test_X.py` (pytest
+    discovery) / `X.py` file names. All five emit kinds delegate to pure render functions.
+  - **`generateApiMethodsPython`** — `api_methods.py` as a **module of functions** (matches the seed
+    shape; not a class — that decision supersedes the original `ApiMethods`-class brief), on `requests`,
+    with a `_Reporter` printing the same `##A2T_CALL##` markers `parseApiCalls` extracts (16 KB body cap,
+    never raises). **`generateDataLibraryPython`** — `class DataGenerator` on `Faker`.
+  - **`generateRequestClassPython`** / **`generateTestPython`** / **`generateE2ETestPython`** — request
+    classes (`to_json`/`to_form_body`, PARAMETER placeholders, OVR-CASE via `setattr` for non-identifier
+    JSON keys), single pytest tests (deploy-layout `sys.path` bootstrap + `Libraries`/`Classes` imports,
+    f-string URLs, `urllib.parse.quote` on query args), and E2E chains (captures via 3-arg
+    `extract_field_async`, `str()`-wrapped URL concat, override statements, `assert` validators).
+  - **`pySymbol`** (`src/services/pyNaming.ts`) — PascalCase→snake_case keeping `_async`
+    (`GetAsync`→`get_async`, `ValidateSuccess_200_201Async`→`validate_success_200_201_async`);
+    `mapCaptureType(type, 'python')` → `float`/`bool`/`str` (`number`→`float` per the seed's typed
+    extract; ids arrive via `as_type="int"` at the call site).
+  - **Seed fixes** (`src/data/libraries/python/api-method-library.json`): `ExtractFieldAsync` now does
+    what its description promised — `as_type` store-as conversion (`int`/`float`/`bool`/`str`), array
+    indices in paths (`items[1].sku`), PASS/FAIL line on 200/201; `FormUrlEncode` now bracket-flattens
+    nested dicts/lists.
+  - **Bug-first:** `test/seedPython.test.ts`, `requestClassPython.test.ts`, `testPython.test.ts`,
+    `e2ePython.test.ts` (+ `emitter.test.ts` additions) written first and shown RED (module-not-found +
+    the seed extract runtime probe), then GREEN — including **runtime probes** that execute the emitted
+    Python (`py_compile` + real interpreter with stubbed `requests`/`DataGenerator`) asserting captured
+    values flow between steps. Full suite **346/347 green (1 skip: live pytest, not installed), build clean.**
+  - **Adoption:** VS Code NF-1/SP-PY (see `../Api2TestVS/docs/TASKS.md`); Desktop picks it up whenever it
+    exposes a Python target — both HANDOVERs note the lift (2026-08-12).
+  - _Original brief (kept for context):_ Core
   today emits C# (`E2ETestGenerationService` / `generateApiMethodsCSharp`) and TS
   (`generateE2ETestTypeScript` / `generateApiMethodsTypeScript`); **Python has no generator at all** —
   `emitterFor('python')` throws. Net-new (NOT a "finish" item on the capture work). Scope:

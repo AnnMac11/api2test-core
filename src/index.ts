@@ -131,5 +131,6 @@ export { chooseSendMethod, chooseExtractMethod, isFormEncoded } from './services
 export { buildExecutionReportHtml } from './services/runReport';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
 export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
-export type { RawTestResult, BuildResult, VitestRun } from './services/TestRunnerService';
+export { parseJUnitXml, runPytest, runPyCompile } from './services/TestRunnerService';
+export type { RawTestResult, BuildResult, VitestRun, PytestRun } from './services/TestRunnerService';
 // ApiCall + the Execution/ExecResult result shapes (EXEC-1) come from ./models (single-sourced).

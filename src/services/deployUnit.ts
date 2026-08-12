@@ -4,7 +4,7 @@ import { CodeEmitter, TargetLanguage } from '../adapters/CodeEmitter';
 import { librariesDir, classesDir, testsDir, librariesNs } from './generatedNamespaces';
 import { ApiMethodForGeneration } from './generateApiMethodsCSharp';
 import { DataMethodCode } from './generateDataLibrary';
-import { runDotnetBuild, runTsc, BuildResult } from './TestRunnerService';
+import { runDotnetBuild, runTsc, runPyCompile, BuildResult } from './TestRunnerService';
 
 /**
  * deployUnit — the one code path that turns a set of test cases into a **complete compilable unit**
@@ -166,11 +166,12 @@ export function deployUnit(cases: DeployCase[], opts: DeployUnitOptions): Deploy
 
 /**
  * Build-validate a deployed unit, per language. `csharp` builds the project (`dotnet build`),
- * `typescript` type-checks it (`tsc --noEmit`). Python arrives with its runner (PY-1).
+ * `typescript` type-checks it (`tsc --noEmit`), `python` byte-compiles it (`python -m compileall`).
  */
 export const BUILD_VALIDATORS: Partial<Record<TargetLanguage, (projectPath: string) => Promise<BuildResult>>> = {
   csharp: (projectPath) => runDotnetBuild(projectPath),
   typescript: (projectPath) => runTsc(projectDirOf(projectPath)),
+  python: (projectPath) => runPyCompile(projectDirOf(projectPath)),
 };
 
 /** Build-validate `projectPath` with the language's validator. Throws for a language with no runner yet. */

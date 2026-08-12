@@ -362,6 +362,97 @@ export function runVitest(projectDir: string, opts: { timeoutMs?: number; filter
   });
 }
 
+// ── PY-1: Python / pytest runner (parallel to the dotnet and Vitest paths above) ────────────────────
+
+/**
+ * Parse pytest's `--junit-xml` report into per-test results (parallel to {@link parseTrx}). JUnit XML
+ * keeps stdout per testcase (`-o junit_logging=out-err`), so the `##A2T_CALL##` markers attribute
+ * directly — the per-test attribution Vitest needed a custom reporter for (TS-C2) comes free here.
+ */
+export function parseJUnitXml(xml: string): RawTestResult[] {
+  const out: RawTestResult[] = [];
+  const re = /<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml || ''))) {
+    const attrs = m[1];
+    const body = m[2] || '';
+    // Anchor on whitespace so `name=` cannot match the tail of `classname=`.
+    const get = (k: string) => attrs.match(new RegExp(`(?:^|\\s)${k}="([^"]*)"`))?.[1] ?? '';
+    const name = get('name');
+    if (!name) continue;
+    const classname = get('classname');
+    let outcome = 'Passed';
+    let message: string | undefined;
+    const failure = body.match(/<(failure|error)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/);
+    if (failure) {
+      outcome = 'Failed';
+      const msgAttr = failure[2].match(/message="([^"]*)"/)?.[1] ?? '';
+      message = decode([msgAttr, (failure[3] || '').trim()].filter(Boolean).join('\n')).trim() || undefined;
+    } else if (/<skipped\b/.test(body)) {
+      outcome = 'NotExecuted';
+    }
+    const sysout = body.match(/<system-out>([\s\S]*?)<\/system-out>/);
+    const calls = sysout ? parseApiCalls(sysout[1]) : [];
+    out.push({
+      method: name,
+      fullName: classname ? `${classname}.${name}` : name,
+      outcome,
+      durationMs: Math.round(parseFloat(get('time') || '0') * 1000) || 0,
+      message,
+      calls: calls.length ? calls : undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * Byte-compile a deployed Python unit with the stdlib (`python -m compileall -q`) and collect syntax
+ * errors (parallel to {@link runDotnetBuild} / {@link runTsc}). No third-party install needed — imports
+ * are not executed, so `requests`/`faker` being absent does not fail validation.
+ */
+export function runPyCompile(projectDir: string, opts: { timeoutMs?: number } = {}): Promise<BuildResult> {
+  return new Promise((resolve) => {
+    execFile('python', ['-m', 'compileall', '-q', projectDir], { timeout: opts.timeoutMs ?? 240_000, maxBuffer: 32 * 1024 * 1024, env: process.env }, (err, stdout, stderr) => {
+      const out = `${stdout || ''}\n${stderr || ''}`;
+      const errors = Array.from(new Set(
+        out.split(/\r?\n/).map(l => l.trim()).filter(l => /(\bSyntaxError\b|Error compiling|^\*\*\*)/.test(l)),
+      ));
+      if (err && errors.length === 0) errors.push((stderr || stdout || 'python -m compileall failed').toString().trim().slice(-400));
+      resolve({ ok: !err && errors.length === 0, errors, raw: out.slice(-2000) });
+    });
+  });
+}
+
+export interface PytestRun {
+  /** Per-test results from the JUnit XML report — `calls` already attributed per test. */
+  results: RawTestResult[];
+  /** All `##A2T_CALL##` markers from the run, flattened across tests. */
+  calls: ApiCall[];
+}
+
+/**
+ * Run pytest in a Python sandbox, emit a JUnit XML report, and parse it. `junit_logging=out-err`
+ * puts each test's stdout in its `<system-out>`, which is where the Reporter markers live.
+ * Non-zero exit on test failures is expected — the report is still produced and parsed.
+ */
+export function runPytest(projectDir: string, opts: { timeoutMs?: number; filter?: string } = {}): Promise<PytestRun> {
+  return new Promise((resolve, reject) => {
+    const outFile = path.join(projectDir, '.api2test-results.xml');
+    try { fs.rmSync(outFile, { force: true }); } catch { /* ignore */ }
+    const args = ['-m', 'pytest', projectDir, '-q', `--junit-xml=${outFile}`, '-o', 'junit_logging=out-err'];
+    if (opts.filter) args.push('-k', opts.filter);
+    execFile('python', args, { timeout: opts.timeoutMs ?? 300_000, maxBuffer: 32 * 1024 * 1024, env: process.env }, (_err, stdout, stderr) => {
+      if (!fs.existsSync(outFile)) {
+        return reject(new Error(`pytest produced no JUnit XML report. ${(stderr || stdout || '').toString().slice(-600)}`));
+      }
+      try {
+        const results = parseJUnitXml(fs.readFileSync(outFile, 'utf8'));
+        resolve({ results, calls: results.flatMap(r => r.calls ?? []) });
+      } catch (e) { reject(e); }
+    });
+  });
+}
+
 /** A test case's generated C# method name (mirrors the E2E generator's methodName()). */
 export function methodNameOf(caseName: string): string {
   const cleaned = (caseName || 'TestCase').replace(/[^a-zA-Z0-9]+/g, ' ').trim()
