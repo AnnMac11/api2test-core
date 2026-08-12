@@ -17,6 +17,25 @@
  */
 const VERBS: Record<string, string> = { POST: 'Post', GET: 'Get', PUT: 'Put', DELETE: 'Delete', PATCH: 'Patch' };
 
+/**
+ * The C# PROPERTY name a spec field is generated as: PascalCase, word-split on `-`, `_`, `.` and spaces.
+ *   email -> Email · pet_id -> PetId · ship-date -> ShipDate
+ *
+ * Single source of truth (OVR-CASE). Records key fields by their **spec** name — that is what the spec
+ * says and what survives a change of target language — so everything that has to address the generated
+ * property (the class emitter, and the E2E object-initializer that pins a field per test) must map
+ * through this one function. C# is case-sensitive: a second copy that drifts emits code that won't
+ * compile. The TypeScript counterpart is `tsPropKey` in `tsNaming.ts` — a different rule, deliberately.
+ */
+export function csPropertyName(name: string): string {
+  return (name || '')
+    .replace(/[-_.\s]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('');
+}
+
 /** PascalCase a single path segment, splitting snake_case / kebab-case words (balance_transactions -> BalanceTransactions). */
 function pascalSegment(seg: string): string {
   return seg

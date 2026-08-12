@@ -29,8 +29,10 @@ test('emits a request class with a data-method default', () => {
     };
     const code = emitter().emitRequestClass(req);
     assert.ok(code, 'code produced');
-    assert.match(code!, /class/);
-    assert.match(code!, /Email/);
+    // Pin the CONCRETE field: the data method must emit its DataGenerator initializer, not merely
+    // mention "Email" somewhere — a dropped/malformed initializer would still contain the token.
+    assert.match(code!, /public string Email \{ get; set; \} = new DataGenerator\(\)\.Email\(\);/,
+        'data-method field emits its DataGenerator initializer');
     assert.match(code!, /\[JsonPropertyName\("email"\)\]/);
 });
 
@@ -103,8 +105,10 @@ test('every TypeScriptEmitter method is implemented (none throws a not-implement
     const e = new TypeScriptEmitter(new FileStorageService(storageDir()));
     // The request-class + data-library emitters are covered in depth in their own test files; here we just
     // assert the emitter surface is fully wired (no remaining TS-C stub throwing "not implemented yet").
-    assert.doesNotThrow(() => e.emitApiMethods([]));
-    assert.doesNotThrow(() => e.emitDataLibrary([]));
+    // Not just "doesn't throw" — pin that each adapter delegates to the right TS generator (a wrong
+    // delegation or an empty return would pass a doesNotThrow but fail these).
+    assert.match(e.emitApiMethods([]), /export class ApiMethods/, 'emitApiMethods delegates to the ApiMethods TS generator');
+    assert.match(e.emitDataLibrary([]), /export class DataGenerator/, 'emitDataLibrary delegates to the DataGenerator TS generator');
 });
 
 test('#52: an integer field generates `public int`, a fractional number `public decimal`', () => {

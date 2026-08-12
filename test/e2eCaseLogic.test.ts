@@ -66,6 +66,16 @@ test('availableVarsBefore lists default + assigned + captured names, deduped', (
   assert.deepEqual(availableVarsBefore(items, 2), ['response1', 'custId', 'myVar']);
 });
 
+test('availableVarsBefore lists typed captures[] so a later step can bind them (E2E-CAP-1)', () => {
+  // A Class step that captures a field the new, typed way — the only OUT shape the refactored builder
+  // writes. Its variable must reach a later step's IN dropdown, or the second class can never bind it.
+  const items = [
+    C('StripeCustomer', { captures: [{ fieldPath: 'id', variable: 'custId', type: 'number' }] }),
+    C('GetCustomer'),
+  ];
+  assert.deepEqual(availableVarsBefore(items, 1), ['response1', 'custId']);
+});
+
 test('validateSteps: a valid send-then-class case passes', () => {
   const items = [M('PostJsonAsync'), C('StripeCustomer')];
   assert.equal(validateSteps(items, methodParams, classItems), null);
@@ -111,10 +121,13 @@ test('isSendMethod: true only for url/urlTemplate-taking wrappers', () => {
   assert.equal(isSendMethod(methodParams, 'PlainMethod'), false);
 });
 
-test('friendlyMethodName: maps known labels, strips suffixes otherwise', () => {
-  assert.equal(friendlyMethodName('ExtractFieldFromResponse'), 'ExtractField');
-  assert.equal(friendlyMethodName('ValidateBadRequestResponseAsync'), 'Validate 400');
+test('friendlyMethodName: the name itself is the label, minus the Async noise', () => {
+  // NAME-1: the method names now say what they do, so the hand-kept label table is gone. What's left is
+  // trimming `Async` — and translating a name saved before the rename, so the builder never shows one.
+  assert.equal(friendlyMethodName('ExtractFieldAsync'), 'ExtractField');
+  assert.equal(friendlyMethodName('ValidateBadRequest_400Async'), 'ValidateBadRequest_400');
   assert.equal(friendlyMethodName('SomethingCustomAsync'), 'SomethingCustom');
+  assert.equal(friendlyMethodName('ValidateBadRequestResponseAsync'), 'ValidateBadRequest_400');
 });
 
 test('groupIntoCalls: send row + class-led row, each with attached follow-ups', () => {

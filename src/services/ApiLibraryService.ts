@@ -1,21 +1,25 @@
 import { StorageProvider } from '../adapters/StorageProvider';
-import { PostmanParserService } from './PostmanParserService';
-import { OpenApiParserService } from './OpenApiParserService';
 import { ApiFormatDetector } from './ApiFormatDetector';
 import { ApiFormatAdapter } from './ApiFormatAdapter';
 import { ApiMethodDto } from '../models/ApiMethodDto';
 
+/**
+ * The API library: the two ways endpoints get in, and the reads/writes over what is stored.
+ *
+ * There are exactly two import paths — `importFromAny` (any supported spec, format detected) and
+ * `importSingleEndpoint` (a bare URL). Format-specific ones used to exist alongside them
+ * (`importFromPostman`, `importFromOpenApi`); they had no caller in any client and still contained the
+ * per-endpoint write loop that IMPORT-HANG removed, so they were a fixed bug kept alive under a name
+ * that autocomplete offers. Removed 2026-08-10 (IMPORT-DEAD) — `importWriteCost.test.ts` asserts the
+ * surface stays at two, because a third path is how the first one survived.
+ */
 export class ApiLibraryService {
     private fileStorage: StorageProvider;
-    private postmanParser: PostmanParserService;
-    private openApiParser: OpenApiParserService;
     private formatDetector: ApiFormatDetector;
     private formatAdapter: ApiFormatAdapter;
-    
+
     constructor(fileStorage: StorageProvider) {
         this.fileStorage = fileStorage;
-        this.postmanParser = new PostmanParserService();
-        this.openApiParser = new OpenApiParserService();
         this.formatDetector = new ApiFormatDetector();
         this.formatAdapter = new ApiFormatAdapter();
     }
@@ -24,8 +28,13 @@ export class ApiLibraryService {
         return await this.fileStorage.readJsonFile<ApiMethodDto>('api-methods.json');
     }
 
-    // Single method to import any format (RAML, GraphQL, Insomnia, Postman, OpenAPI)
-    async importFromAny(content: string, fileName: string, application: string): Promise<void> {
+    /**
+     * Single method to import any format (RAML, GraphQL, Insomnia, Postman, OpenAPI).
+     *
+     * @param applicationId - Stable id of the application being imported into (APP-ID-IMPORT).
+     * Stamped on every endpoint so the link survives a rename; omit only for legacy callers.
+     */
+    async importFromAny(content: string, fileName: string, application: string, applicationId?: string): Promise<void> {
         try {
             // 1. Detect format
             const format = this.formatDetector.detect(content, fileName);
@@ -41,12 +50,14 @@ export class ApiLibraryService {
                 throw new Error('No endpoints found in the imported file');
             }
             
-            // 3. Convert to our internal format and save
-            for (const unified of unifiedEndpoints) {
-                const apiMethod = this.formatAdapter.toApiMethodDto(unified, format, application);
-                await this.fileStorage.addItem('api-methods.json', apiMethod);
-            }
-            
+            // 3. Convert to our internal format and save — in ONE write. `addItem` rewrites the whole
+            // collection each call, so appending 589 Stripe endpoints one at a time re-serialises a
+            // multi-megabyte file 589 times: gigabytes of work that looks, from the dialog, like a hang.
+            const existing = await this.fileStorage.readJsonFile<ApiMethodDto>('api-methods.json');
+            const imported = unifiedEndpoints.map(unified =>
+                this.formatAdapter.toApiMethodDto(unified, format, application, applicationId));
+            await this.fileStorage.writeJsonFile('api-methods.json', [...existing, ...imported]);
+
             console.log(`Imported ${unifiedEndpoints.length} endpoints from ${format} format`);
         } catch (error) {
             if (error instanceof SyntaxError) {
@@ -56,49 +67,14 @@ export class ApiLibraryService {
         }
     }
 
-    async importFromPostman(collectionJson: string, collectionName: string): Promise<void> {
-        try {
-            const collection = this.postmanParser.parseCollection(collectionJson);
-            const endpoints = this.postmanParser.extractEndpoints(collection);
-
-            if (endpoints.length === 0) {
-                throw new Error('No endpoints found in Postman collection');
-            }
-
-            for (const endpoint of endpoints) {
-                await this.fileStorage.addItem('api-methods.json', endpoint);
-            }
-
-        } catch (error) {
-            if (error instanceof SyntaxError) {
-                throw new Error('Invalid JSON format in Postman collection');
-            }
-            throw new Error(`Failed to import Postman collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    }
-
-    async importFromOpenApi(openApiJson: string, collectionName: string): Promise<void> {
-        try {
-            const spec = this.openApiParser.parseSpec(openApiJson);
-            const endpoints = this.openApiParser.extractEndpoints(spec);
-
-            if (endpoints.length === 0) {
-                throw new Error('No endpoints found in OpenAPI specification');
-            }
-
-            for (const endpoint of endpoints) {
-                await this.fileStorage.addItem('api-methods.json', endpoint);
-            }
-
-        } catch (error) {
-            if (error instanceof SyntaxError) {
-                throw new Error('Invalid JSON format in OpenAPI specification');
-            }
-            throw new Error(`Failed to import OpenAPI specification: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    }
-
-    async importSingleEndpoint(url: string, application: string): Promise<void> {
+    /**
+     * Registers a bare URL as a single GET endpoint — the fallback for a URL that is not a spec.
+     *
+     * @param applicationId - Stable id of the application (APP-ID-IMPORT), same contract as
+     * `importFromAny`. Both entry points into the library must stamp it, or a URL import is the one
+     * row a rename still orphans.
+     */
+    async importSingleEndpoint(url: string, application: string, applicationId?: string): Promise<void> {
         const parsed = new URL(url);
         const endpoint: ApiMethodDto = {
             id: Math.random().toString(36).substr(2, 9),
@@ -108,6 +84,7 @@ export class ApiLibraryService {
             url: url,
             description: `Imported from ${url}`,
             application,
+            applicationId,
             createdDate: new Date().toISOString(),
             source: undefined,
             isCustom: false,

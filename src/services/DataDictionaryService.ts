@@ -1,6 +1,7 @@
 import { DataDictionaryField } from '../models/DataDictionaryDto';
 import { DataMethodDto } from '../models/DataMethodDto';
 import { StorageProvider } from '../adapters/StorageProvider';
+import { typeClass } from './dataMethodMatching';
 
 /**
  * Sentinel value stored on a {@link DataDictionaryField} when no matching
@@ -247,6 +248,54 @@ export class DataDictionaryService {
     }
 
     /**
+     * CLS-7 â€” every field of `endpoint`, with the dictionary's stored settings copied in **by name**.
+     * This is what a Class Library entry is built from.
+     *
+     * @remarks
+     * A class must NOT be assembled by filtering the dictionary on `sourceEndpointId`. The dictionary
+     * de-duplicates by field name across ALL endpoints and each row records a single owner, so a field
+     * an earlier endpoint imported first is invisible to every later endpoint that shares the name â€”
+     * PetStore `placeOrder` ended up with a class carrying zero fields because `id`, `status`, `petId`,
+     * `quantity`, `shipDate` and `complete` had all been claimed by `addPet`, `deletePet` and
+     * `getOrderById`. The relationship is many-to-many; the stored link is one-to-one.
+     *
+     * So the shape of the class comes from the **endpoint's own** body schema and parameters (the same
+     * extraction the import uses, de-duplication switched off), and the dictionary supplies only the
+     * user's reusable choice for a field of that name â€” `dataMethod` and its args. Type, mandatory and
+     * location stay the endpoint's: two endpoints may legitimately disagree about a shared name, and for
+     * this class its own spec is authoritative. Nothing is linked, so a later dictionary edit can never
+     * empty a class (user, 2026-08-08: *"create a class using the values to the data dictionary, do not
+     * link them"*).
+     *
+     * A field with no dictionary row keeps `NOT_ASSIGNED` â€” it shows as unassigned rather than being
+     * silently dropped. Where the dictionary holds several rows for one name (allowed: the duplicate
+     * check is name **+ type**), the row whose type matches this endpoint's wins.
+     *
+     * @param endpoint - The API method this class represents (an {@link ApiMethodDto}-shaped object).
+     * @returns One {@link DataDictionaryField} per field of the endpoint, dictionary settings applied.
+     */
+    async fieldsForEndpoint(endpoint: any): Promise<DataDictionaryField[]> {
+        const own = await this.extractFieldsFromEndpoint(endpoint, false);
+        const dictionary = await this.getDataDictionary();
+
+        return own.map(field => {
+            const sameName = dictionary.filter(
+                d => (d.fieldName || '').toLowerCase() === field.fieldName.toLowerCase()
+            );
+            const match =
+                sameName.find(d => (d.fieldType || '').toLowerCase() === field.fieldType.toLowerCase())
+                ?? sameName[0];
+            return match
+                ? {
+                    ...field,
+                    dataMethod: match.dataMethod || NOT_ASSIGNED,
+                    dataMethodArgs: match.dataMethodArgs || ''
+                }
+                : field;
+        });
+    }
+
+    /**
      * Walks a resolved request-body schema, creating Data Dictionary leaf fields.
      *
      * @remarks
@@ -354,10 +403,18 @@ export class DataDictionaryService {
         fields: DataDictionaryField[],
         dataMethods: DataMethodDto[]
     ): DataDictionaryField[] {
-        return fields.map(field => ({
-            ...field,
-            dataMethod: this.findBestMatch(field, dataMethods)?.methodName ?? NOT_ASSIGNED
-        }));
+        return fields.map(field => {
+            // URL parameters (path/query) carry a value supplied at RUN TIME, not a generated one, so they
+            // must bind the type-matched Parameter* placeholder regardless of the field's own name. We reuse
+            // findBestMatch unchanged — only the match-name is swapped to `parameter`, so its type filter
+            // still narrows to the field's class and its name tiers then pick ParameterInt/String/Date/Bool.
+            const isUrlParam = field.location === 'path' || field.location === 'query';
+            const forMatch = isUrlParam ? { ...field, fieldName: 'parameter' } : field;
+            return {
+                ...field,
+                dataMethod: this.findBestMatch(forMatch, dataMethods)?.methodName ?? NOT_ASSIGNED
+            };
+        });
     }
 
     /**
@@ -385,8 +442,8 @@ export class DataDictionaryService {
         // (object→object, array→array, and scalars split by number/boolean/date/string). This stops an
         // object `address` field matching the scalar `Address()`, AND a number `id` field matching the
         // string `TaxId()` — a coarse object/array/scalar bucket used to allow that second mismatch.
-        const fieldClass = this.typeClass(field.fieldType);
-        const candidates = dataMethods.filter(dm => this.typeClass(dm.returnType) === fieldClass);
+        const fieldClass = typeClass(field.fieldType);
+        const candidates = dataMethods.filter(dm => typeClass(dm.returnType) === fieldClass);
         if (candidates.length === 0) { return undefined; }
 
         // Match on the LEAF segment of a dot-path (category.name â†’ "name"), singularising
@@ -434,20 +491,8 @@ export class DataDictionaryService {
         return undefined;
     }
 
-    /**
-     * Classifies a field type or a method return type into a matching class. Scalars are split into
-     * number / boolean / date / string (not lumped as one "scalar") so a numeric field never binds a
-     * string generator — e.g. a `number` `id` field must not match the string `TaxId()` method.
-     */
-    private typeClass(type: string): 'object' | 'array' | 'number' | 'boolean' | 'date' | 'string' {
-        const t = (type || '').toLowerCase().trim().replace(/\?/g, '');
-        if (t.includes('list<') || t.endsWith('[]') || t === 'array') { return 'array'; }
-        if (t.includes('dictionary') || t === 'object') { return 'object'; }
-        if (/^(number|integer|int|long|short|byte|sbyte|uint|ulong|ushort|decimal|double|float|single)$/.test(t)) { return 'number'; }
-        if (t === 'bool' || t === 'boolean') { return 'boolean'; }
-        if (t === 'date' || t === 'dateonly' || t === 'timespan' || t.includes('datetime')) { return 'date'; }
-        return 'string';
-    }
+    // Field/method type classification lives in the shared `typeClass` (./dataMethodMatching) so the
+    // Data Dictionary auto-match and the inline data-method dropdown use ONE classifier in both editions.
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

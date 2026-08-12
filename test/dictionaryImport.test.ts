@@ -116,3 +116,57 @@ test('a class-library failure does NOT block the import (fields saved, endpoint 
   const ep = (store.db.get('api-methods.json') || []).find(e => e.id === 'ep1');
   assert.equal(ep.importedToDataDictionary, true, 'endpoint still marked imported');
 });
+
+// ── CLS-7 ────────────────────────────────────────────────────────────────────────────────────────
+// The defect the user hit in VS Code 2026-08-08: PetStore `placeOrder` produced a class with ZERO
+// fields, so the Test Case builder said "No request fields on this class" and re-generating wrote
+// nothing. Cause: the dictionary de-duplicates by field NAME across the whole dictionary, and
+// `importApi` handed `addClass` only the newly-added (de-duplicated) fields — every placeOrder field
+// had already been claimed by an earlier PetStore endpoint, so the set was empty. A class copies
+// values from the dictionary; it must NOT depend on owning the dictionary row.
+//
+// The guard that should have caught this is the dedup test above: it asserts the TALLY on a
+// re-import but never looks at the class that was written. Schemas below are the real ones from the
+// user's store.
+const ADD_PET = {
+  id: 'ep-pet', name: 'addPet', application: 'PetStore', endpoint: '/pet', path: '/pet', method: 'POST',
+  requestBodySchema: '{"type":"object","properties":{"id":{"type":"integer"},"name":{"type":"string"},"status":{"type":"string"}},"required":["name"]}',
+};
+const PLACE_ORDER = {
+  id: 'ep-order', name: 'placeOrder', application: 'PetStore', endpoint: '/store/order', path: '/store/order', method: 'POST',
+  requestBodySchema: '{"type":"object","properties":{"id":{"type":"integer"},"petId":{"type":"integer"},"quantity":{"type":"integer"},"shipDate":{"type":"string"},"status":{"type":"string"},"complete":{"type":"boolean"}},"required":[]}',
+};
+
+test('CLS-7: a class carries its OWN body fields even when every name was claimed by an earlier import', async () => {
+  const store = memStore({
+    'api-methods.json': [{ ...ADD_PET }, { ...PLACE_ORDER }],
+    'data-library.json': [
+      { id: '1', methodName: 'RandomInt', returnType: 'int', code: 'x' },
+      { id: '2', methodName: 'RandomString', returnType: 'string', code: 'x' },
+    ],
+  });
+  const svc = new DictionaryImportService(store as any);
+
+  await svc.importApi({ ...ADD_PET } as any);     // claims id, name, status
+  const second = await svc.importApi({ ...PLACE_ORDER } as any);
+
+  // The dictionary genuinely de-duplicates — that part is correct and stays.
+  assert.equal(second.addedFields, 4, 'only petId, quantity, shipDate and complete are new — id and status were claimed by addPet');
+
+  const order = (store.db.get('api-class-library.json') || []).find(c => c.endpointId === 'ep-order');
+  assert.ok(order, 'placeOrder got a class entry');
+  assert.deepEqual(
+    order.fields.map((f: any) => f.fieldName).sort(),
+    ['complete', 'id', 'petId', 'quantity', 'shipDate', 'status'],
+    'the class holds all six body fields of ITS OWN endpoint, not just the ones it happened to add',
+  );
+
+  // A field owned by the earlier endpoint still brings its assigned data method across — the class
+  // copies the dictionary's VALUES by name; it does not link to the row.
+  const dictStatus = (store.db.get('data-dictionary.json') || []).find((f: any) => f.fieldName === 'status');
+  assert.equal(
+    order.fields.find((f: any) => f.fieldName === 'status').dataMethod,
+    dictStatus.dataMethod,
+    'shared field takes the dictionary assignment',
+  );
+});

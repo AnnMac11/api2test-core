@@ -3,6 +3,8 @@ import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGener
 import { NOT_ASSIGNED, PARAMETER } from './DataDictionaryService';
 import { StorageProvider } from '../adapters/StorageProvider';
 import { classesNs, librariesNs } from './generatedNamespaces';
+import { csPropertyName } from './classNaming';
+import { fieldDisplayType } from './fieldTypes';
 
 /**
  * Generates C# request-body classes from API Class Library entries.
@@ -384,29 +386,18 @@ ${lines.join('\n')}
         }
     }
 
+    /**
+     * TYPE-1: delegates to the shared map so the type a client SHOWS the user is by construction the type
+     * this generator DECLARES. (Object and array stay `object` there too — the property has to hold
+     * whatever the assigned data method returns, and ToFormBody/ToJson serialise the runtime value.)
+     */
     private getCSharpType(type: string): string {
-        switch (type.toLowerCase()) {
-            case 'string':   return 'string';
-            case 'int': case 'integer': return 'int';
-            case 'decimal': case 'number': case 'double': return 'decimal';
-            case 'bool': case 'boolean': return 'bool';
-            case 'datetime': case 'date': return 'DateTime';
-            // Object AND array fields use `object` so the property can hold whatever the assigned
-            // data method returns (Dictionary, List<string>, List<Dictionary>, â€¦) without type
-            // mismatches. ToFormBody/ToJson serialise the runtime value correctly.
-            case 'array':    return 'object';
-            case 'object':   return 'object';
-            default:         return 'string';
-        }
+        return fieldDisplayType(type, 'csharp');
     }
 
+    /** Delegates to the shared rule (`csPropertyName`) so the E2E emitter names the same property. */
     private formatPropertyName(name: string): string {
-        return name
-            .replace(/[-_.\s]+/g, ' ')
-            .split(' ')
-            .filter(Boolean)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join('');
+        return csPropertyName(name);
     }
 
     private generateId(): string {

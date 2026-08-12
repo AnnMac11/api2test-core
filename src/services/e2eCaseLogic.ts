@@ -11,6 +11,7 @@
  * rules here means the builder's behaviour is covered by fast tests and can change safely.
  */
 import type { E2ECaseItem } from '../models/E2EDto';
+import { canonicalMethodName } from './e2eMethodSelection';
 
 /** Minimal shape of a library picker item these rules read (className/method entry). */
 export interface PickerLike {
@@ -80,7 +81,8 @@ export function availableVarsBefore(items: E2ECaseItem[], idx: number): string[]
   const vars: string[] = [];
   items.slice(0, idx).forEach((s, i) => {
     vars.push(s.assignTo?.trim() || (s.type === 'Class' ? `response${i + 1}` : `result${i + 1}`));
-    if (s.capture?.variable) vars.push(s.capture.variable);
+    if (s.capture?.variable) vars.push(s.capture.variable);            // legacy singular capture
+    (s.captures || []).forEach(c => { if (c.variable?.trim()) vars.push(c.variable.trim()); }); // typed captures[] (E2E-CAP-1)
   });
   return [...new Set(vars.filter(Boolean))];
 }
@@ -90,24 +92,40 @@ export function isSendMethod(methodParams: MethodParamMap, ref: string): boolean
   return paramsOf(methodParams, ref).some(p => p.toLowerCase().includes('url'));
 }
 
-/** Friendly, plain display labels for the library methods (display ONLY — the underlying method name that
- *  drives code generation is unchanged). Keeps the builder readable: "ExtractField", "Validate 400", … */
-const METHOD_LABELS: Record<string, string> = {
-  ExtractFieldFromResponse: 'ExtractField',
-  ExtractTokenFromResponse: 'ExtractToken',
-  ValidateResponseAsync: 'Validate 200/201',
-  ValidateDeleteResponseAsync: 'Validate 200/204',
-  ValidateBadRequestResponseAsync: 'Validate 400',
-  ValidateUnauthorizedResponseAsync: 'Validate 401',
-  ValidateForbiddenResponseAsync: 'Validate 403',
-  ValidateNotFoundResponseAsync: 'Validate 404',
-  ValidateConflictResponseAsync: 'Validate 409',
-  ValidateValidationErrorResponseAsync: 'Validate 422',
-};
+/**
+ * Plain display label for a library method (display ONLY — the method name is what drives code generation).
+ *
+ * There used to be a hand-kept table of labels here because the method names didn't say what they did
+ * (`ValidateNotFoundResponseAsync` → "Validate 404"). Since NAME-1 the names carry the meaning themselves,
+ * so the label is just the name minus the `Async` noise: `ExtractFieldAsync` → "ExtractField",
+ * `ValidateNotFound_404Async` → "ValidateNotFound_404". A case saved before the rename is translated first,
+ * so the builder never shows a name that no longer exists.
+ */
 export function friendlyMethodName(ref: string): string {
-  if (METHOD_LABELS[ref]) return METHOD_LABELS[ref];
-  // Fallback for un-mapped methods: drop the noisy suffixes (…FromResponse / …ResponseAsync / …Async).
-  return (ref || '').replace(/FromResponse$/, '').replace(/ResponseAsync$/, '').replace(/Async$/, '') || ref;
+  return canonicalMethodName(ref).replace(/Async$/, '') || ref;
+}
+
+/**
+ * OUT-capture store-as types (E2E-CAP-1). The builder offers ONE edition-agnostic list — `string` (default),
+ * `number`, `bool`/`boolean`, `Guid` (no `object`/`array`, since captures feed URL `{}` parts and scalars) —
+ * and core maps each to the concrete language type the emitter needs.
+ *
+ * `number` → C# `decimal` (holds large integer ids exactly, unlike `double` past 2^53, and renders cleanly
+ * into a URL: `123`, not `123.0`) and TypeScript `number`. `Guid` has no distinct TS type, so it rides as
+ * `string`. Anything already concrete (e.g. `long`, `int`, `decimal` from the Option-1 look-ahead) passes
+ * through unchanged, so a power user's explicit type still works.
+ */
+export type CaptureLang = 'csharp' | 'typescript';
+export function mapCaptureType(type: string | undefined, lang: CaptureLang): string {
+  const t = (type || 'string').trim() || 'string';
+  switch (t.toLowerCase()) {
+    case 'number': return lang === 'csharp' ? 'decimal' : 'number';
+    case 'bool':
+    case 'boolean': return lang === 'csharp' ? 'bool' : 'boolean';
+    case 'guid': return lang === 'csharp' ? 'Guid' : 'string';
+    case 'string': return 'string';
+    default: return t; // already a concrete language type — pass through untouched
+  }
 }
 
 /** One call-row (#58): a send method + the class it sends (directly below) + follow-up extract/validate

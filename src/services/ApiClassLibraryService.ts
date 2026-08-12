@@ -1,7 +1,7 @@
 import { ApiClassLibraryDto, ApiClassLibraryFieldDto } from '../models/ApiClassLibraryDto';
 import { ApiMethodDto } from '../models/ApiMethodDto';
 import { DataDictionaryField } from '../models/DataDictionaryDto';
-import { NOT_ASSIGNED } from './DataDictionaryService';
+import { DataDictionaryService, NOT_ASSIGNED } from './DataDictionaryService';
 import { StorageProvider } from '../adapters/StorageProvider';
 
 /**
@@ -48,22 +48,67 @@ export class ApiClassLibraryService {
             endpointId: apiMethod.id,
             className,
             application: apiMethod.application,
+            // APP-ID-IMPORT: carry the endpoint's rename-proof app link onto the class.
+            applicationId: apiMethod.applicationId,
             method: apiMethod.method,
             endpoint: apiMethod.endpoint,
-            fields: fields.map((f): ApiClassLibraryFieldDto => ({
-                fieldName: f.fieldName,
-                fieldType: f.fieldType,
-                mandatory: f.mandatory ?? false,
-                dataMethod: f.dataMethod || NOT_ASSIGNED,
-                dataMethodArgs: f.dataMethodArgs || '',
-                location: f.location || 'body'
-            })),
+            fields: this.toClassFields(fields),
             requestBodySchema: apiMethod.requestBodySchema || '',
             contentType: apiMethod.contentType || 'application/json',
             createdDate: new Date().toISOString()
         };
 
         await this.fileStorage.addItem('api-class-library.json', classEntry);
+    }
+
+    /**
+     * RB-4 / CLS-7 — rebuild a class entry's field snapshot from its endpoint and the current Data
+     * Dictionary, and persist it. This is a **full refresh**: fields the endpoint has gained are added,
+     * changed `dataMethod` assignments are picked up, and fields the endpoint no longer has are dropped.
+     * It is what the "Update & Generate" button runs before generating (user, 2026-08-08: the class is
+     * overwritten with current data, because the dictionary may have been edited since).
+     *
+     * @remarks
+     * Population goes through {@link DataDictionaryService.fieldsForEndpoint} — the same path
+     * {@link addClass} uses — so the shape comes from the endpoint's own schema and the dictionary
+     * supplies the data-method choices by name. It deliberately does NOT filter the dictionary by
+     * `sourceEndpointId`: that link is one-to-one over a many-to-many relationship and emptied classes
+     * whose field names another endpoint had imported first (CLS-7).
+     *
+     * When `endpoint` is supplied the entry also re-takes its `method`, `endpoint`, `contentType` and
+     * `requestBodySchema` — a re-imported spec can change those, not just the dictionary. When it is
+     * omitted (the endpoint has been deleted; a class outlives its source by design) the entry's own
+     * stored schema and path are the source, so the refresh still works and simply cannot see anything
+     * the entry never recorded.
+     *
+     * @param id - The class entry to refresh.
+     * @param endpoint - The current API method, when it still exists.
+     * @returns The updated entry, or `undefined` if no class has that id.
+     */
+    async resyncClassFields(
+        id: string,
+        endpoint?: ApiMethodDto
+    ): Promise<ApiClassLibraryDto | undefined> {
+        const entry = await this.getClassById(id);
+        if (!entry) { return undefined; }
+
+        const source = endpoint ?? entry;
+        const dictionary = new DataDictionaryService(this.fileStorage);
+        const fields = this.toClassFields(await dictionary.fieldsForEndpoint(source));
+
+        const updated: ApiClassLibraryDto = endpoint
+            ? {
+                ...entry,
+                method: endpoint.method,
+                endpoint: endpoint.endpoint,
+                contentType: endpoint.contentType || entry.contentType,
+                requestBodySchema: endpoint.requestBodySchema || '',
+                fields
+            }
+            : { ...entry, fields };
+
+        await this.updateClass(id, updated);
+        return updated;
     }
 
     /**
@@ -103,6 +148,23 @@ export class ApiClassLibraryService {
     }
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    /**
+     * Maps Data Dictionary fields to the class entry's stored field snapshot. Stores `mandatory`,
+     * `dataMethod`, args and location so the generator produces correctly typed, data-bound properties
+     * without re-querying the dictionary. Shared by {@link addClass} and {@link resyncClassFields} so the
+     * initial population and a later re-sync build the snapshot identically.
+     */
+    private toClassFields(fields: DataDictionaryField[]): ApiClassLibraryFieldDto[] {
+        return fields.map((f): ApiClassLibraryFieldDto => ({
+            fieldName: f.fieldName,
+            fieldType: f.fieldType,
+            mandatory: f.mandatory ?? false,
+            dataMethod: f.dataMethod || NOT_ASSIGNED,
+            dataMethodArgs: f.dataMethodArgs || '',
+            location: f.location || 'body'
+        }));
+    }
 
     /**
      * Generates a PascalCase C# class name from the application name and API name.

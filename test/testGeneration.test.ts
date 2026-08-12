@@ -34,3 +34,13 @@ test('usings + namespace use the shared generatedNamespaces, not the old library
     assert.ok(!code.includes(bad), `must not emit the broken '${bad}'`);
   }
 });
+
+test('POST body pins the wrapper call (class.method + arg order) and request-body construction', () => {
+  // The namespace test above never touches the call site; a wrong wrapper, swapped args, or a missing
+  // .ToJson() would stay green. Pin the concrete Act lines (the C# analogue of the TS twin's coverage).
+  const code = svc().generateCode({ ...base, method: 'POST', bodyClassName: 'PetStorePostPet' });
+  assert.match(code, /var requestBody = new PetStorePostPet\(\)\.ToJson\(\);/,
+    'request body is built from the body class and serialised');
+  assert.match(code, /var response = await ApiMethods\.GetAsync\(token, url, requestBody\);/,
+    'wrapper class.method and (token, url, requestBody) arg order are pinned');
+});

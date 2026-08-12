@@ -16,6 +16,9 @@ function svc(): DataDictionaryService {
 function field(fieldName: string, fieldType: string): DataDictionaryField {
     return { id: '1', fieldName, fieldType, mandatory: false, dataMethod: NOT_ASSIGNED } as DataDictionaryField;
 }
+function urlField(fieldName: string, fieldType: string, location: 'path' | 'query'): DataDictionaryField {
+    return { id: '1', fieldName, fieldType, mandatory: true, dataMethod: NOT_ASSIGNED, location } as DataDictionaryField;
+}
 function method(methodName: string, returnType: string): DataMethodDto {
     return { id: methodName, methodName, returnType } as DataMethodDto;
 }
@@ -83,4 +86,44 @@ test('return-type-first: a boolean field does NOT match a string method by name'
         [method('ActiveStatus', 'string')],
     );
     assert.equal(out[0].dataMethod, NOT_ASSIGNED);
+});
+
+// ── URL parameter fields (path/query) — value is always runtime-supplied, so the field is bound to the
+//    type-matched Parameter* placeholder instead of a data generator, regardless of its name. This is what
+//    lets a bodyless endpoint's class generate (an unmatched mandatory field would block generation). ──
+
+test('a path param binds the type-matched Parameter method, not by its own name', () => {
+    // `petId` name-matches nothing here; as a path param it must still resolve to ParameterInt (int class).
+    const out = svc().autoMatchDataMethods(
+        [urlField('petId', 'number', 'path')],
+        [method('ParameterInt', 'int'), method('ParameterString', 'string'), method('Age', 'int')],
+    );
+    assert.equal(out[0].dataMethod, 'ParameterInt');
+});
+
+test('a string query param binds ParameterString (not another string generator)', () => {
+    // FirstName is a decoy: with two string candidates the tier-4 single-match fallback can't fire, so
+    // binding ParameterString proves the url-param path, not luck.
+    const out = svc().autoMatchDataMethods(
+        [urlField('status', 'string', 'query')],
+        [method('ParameterString', 'string'), method('FirstName', 'string')],
+    );
+    assert.equal(out[0].dataMethod, 'ParameterString');
+});
+
+test('a boolean path param binds ParameterBool (not a name-matching bool method)', () => {
+    // IsActive would name-match `active` via CamelCase; the url-param path must beat it with ParameterBool.
+    const out = svc().autoMatchDataMethods(
+        [urlField('active', 'boolean', 'path')],
+        [method('ParameterBool', 'bool'), method('IsActive', 'bool')],
+    );
+    assert.equal(out[0].dataMethod, 'ParameterBool');
+});
+
+test('a body field still matches by name (url-param handling does not touch body)', () => {
+    const out = svc().autoMatchDataMethods(
+        [field('email', 'string')],
+        [method('Email', 'string'), method('ParameterString', 'string')],
+    );
+    assert.equal(out[0].dataMethod, 'Email');
 });

@@ -8,14 +8,10 @@ import * as path from 'path';
  * keeps it gated off (no local filesystem). See the edition-gating notes.
  */
 
-/** One API call captured during a test — from the generated Reporter's `##A2T_CALL##` output. */
-export interface ApiCall {
-  method?: string;
-  url?: string;
-  requestBody?: string;
-  status?: number;
-  responseBody?: string;
-}
+// `ApiCall` is single-sourced in `models/execution` (captured Reporter request/response) so the runner and
+// the branded report never drift; re-exported here for back-compat with existing `TestRunnerService` imports.
+import type { ApiCall } from '../models/execution';
+export type { ApiCall };
 
 export interface RawTestResult {
   /** Bare method name (last segment of the fully-qualified test name). */
@@ -96,6 +92,57 @@ export function parseTrx(xml: string): RawTestResult[] {
 }
 
 /**
+ * True when the project runs on **Microsoft.Testing.Platform** rather than VSTest — that is, when
+ * `dotnet test` hands the arguments to the test executable instead of to the VSTest host.
+ *
+ * It matters because the two platforms share no command line. MTP has no `--logger trx;…`; it silently
+ * ignores it and writes no TRX, which is exactly how a run that passed still reported
+ * "dotnet test produced no TRX" (RUN-TRX). Its TRX has to be asked for by name, after a `--`.
+ *
+ * `MSTest.Sdk` enables the MSTest runner by default, so the SDK attribute is the signal — unless the
+ * project turns it off explicitly, in which case the property wins. Anything we cannot read is treated as
+ * VSTest, which is what every caller assumed before this existed.
+ */
+export function usesTestingPlatform(projectPath: string): boolean {
+  let file = projectPath;
+  try {
+    if (fs.statSync(projectPath).isDirectory()) {
+      const proj = fs.readdirSync(projectPath).find(f => /\.(cs|fs|vb)proj$/i.test(f));
+      if (!proj) return false;
+      file = path.join(projectPath, proj);
+    }
+    const xml = fs.readFileSync(file, 'utf8');
+    const explicit = xml.match(/<EnableMSTestRunner>\s*(true|false)\s*<\/EnableMSTestRunner>/i);
+    if (explicit) return explicit[1].toLowerCase() === 'true';
+    return /Sdk\s*=\s*"MSTest\.Sdk/i.test(xml);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The `dotnet test` command line for a project, in the shape its test platform understands.
+ * Split out from {@link runDotnetTest} so the arguments can be asserted without a .NET SDK present.
+ */
+export function dotnetTestArgs(
+  projectPath: string,
+  resultsDir: string,
+  opts: { filter?: string } = {},
+  mtp = false,
+): string[] {
+  if (mtp) {
+    // Everything after `--` goes to the test app itself — that is where MTP reads its options.
+    const args = ['test', projectPath, '--', '--report-trx', '--report-trx-filename', 'results.trx',
+      '--results-directory', resultsDir];
+    if (opts.filter) args.push('--filter', opts.filter);
+    return args;
+  }
+  const args = ['test', projectPath, '--logger', 'trx;LogFileName=results.trx', '--results-directory', resultsDir];
+  if (opts.filter) args.push('--filter', opts.filter);
+  return args;
+}
+
+/**
  * Run `dotnet test` on a project (.csproj or folder), emit a TRX, and parse it.
  * Non-zero exit on test failures is expected — the TRX is still produced and parsed.
  */
@@ -104,8 +151,7 @@ export function runDotnetTest(projectPath: string, opts: { timeoutMs?: number; f
     const resultsDir = path.join(path.dirname(projectPath), '.api2test-results');
     try { fs.rmSync(resultsDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
-    const args = ['test', projectPath, '--logger', 'trx;LogFileName=results.trx', '--results-directory', resultsDir];
-    if (opts.filter) args.push('--filter', opts.filter);
+    const args = dotnetTestArgs(projectPath, resultsDir, opts, usesTestingPlatform(projectPath));
 
     execFile('dotnet', args, { timeout: opts.timeoutMs ?? 300_000, maxBuffer: 32 * 1024 * 1024, env: process.env }, (_err, stdout, stderr) => {
       const trxPath = path.join(resultsDir, 'results.trx');

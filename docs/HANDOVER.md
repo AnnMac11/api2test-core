@@ -67,7 +67,253 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
-**As of 2026-07-25 (SEED-2 + CLS-5 + CLS-6 + #52 + E2E-CAP-GET landed/verified, branch `develop`):**
+**As of 2026-08-10 (`IMPORT-HANG` — a real spec can be imported again; branch `develop`, UNCOMMITTED,
+312 passing):** RESP-SCHEMA (below) shipped in VS Code 0.2.50 and the user's next Stripe import never
+finished — *"it appears to be stuck. there is no error?"*. Measured: the committed adapter does
+Stripe's 7.9 MB spec in **58 ms**; with RESP-SCHEMA it **ran an 8 GB heap out** after ~140 s, silently,
+because nothing throws. Three causes, all in the import path, all fixed here:
+**(1)** `resolveSchemaTree` clones its cycle guard per branch, so the guard is per-*path* and a shared
+sub-graph is re-expanded once per route to it. Request bodies are shallow and never showed it;
+Stripe's response graph is the whole object model. Bounded now by `MAX_SCHEMA_DEPTH = 3` /
+`MAX_SCHEMA_NODES = 300` — depth 3 is precisely what renders it (field → items → the element's
+members), and Stripe resolves in **99 ms / 5.7 MB**.
+**(2)** `importFromAny` called `addItem` per endpoint, and `addItem` rewrites the entire collection —
+589 full rewrites of a growing file. Quadratic, and **pre-existing**: RESP-SCHEMA only made each row
+bigger. One read, one write now.
+**(3)** `baseUrl` was misparenthesised (`||` binds tighter than `?:`), so **every OpenAPI v3 import
+since forever** stored `https://undefined/…`. Fixed, plus the trailing slash Stripe declares.
+Bug-first: `schemaExpansionBounds.test.ts` (471 KB → bounded for one endpoint) and
+`importWriteCost.test.ts` (200 writes → 1); the URL fix REDs `importFidelity.test.ts`. 301 → 312.
+**The lesson worth carrying:** every test fixture in this repo is a handful of endpoints, so nothing
+here exercises *scale*. A change that is correct on 3 endpoints and fatal on 589 passes the whole
+suite. **Adoption:** VS Code 0.2.51; **Desktop has NOT** — it shares this import path, so it has all
+three bugs today.
+
+**As of 2026-08-10, later the same day (`APP-ID-SINGLE`; branch `develop`, UNCOMMITTED, 313 passing):**
+IMPORT-HANG's write fix reached VS Code and the user's import still took 5m13s — because the extension
+kept **its own** `importFromAny` with the same per-endpoint loop. Core's parsers were imported; core's
+orchestration was reimplemented there. Worth knowing here, because it is the failure mode this repo is
+exposed to by design: a fix landing in core changes nothing for a client that only borrowed our parts.
+Both clients' import seams should be read as *seams*, and any that re-implement an engine method are
+carrying a fork.
+While collapsing that duplicate, one method had a real reason to stay local — `importSingleEndpoint`
+took no `applicationId`, so APP-ID-IMPORT had missed the URL-import path. The user's rule (*"if there is
+an issue with the core, it should be fixed, no workaround"*) settles how those are handled: the gap is
+closed here, not compensated for downstream. `importSingleEndpoint(url, application, applicationId?)`
+now matches `importFromAny`; third case in `appIdImport.test.ts` is bug-first (RED undefined → GREEN).
+**Adoption:** VS Code 0.2.52 (delegates both methods); **Desktop — nothing to adopt**, it has no caller
+of `importSingleEndpoint`, but its `upload-api` route still builds DTO rows itself (APP-ID-IMPORT).
+**Also spotted, not actioned:** `importFromPostman`/`importFromOpenApi` here have **no caller in any
+repo** and still carry the per-endpoint `addItem` loop — dead code that keeps the fixed bug alive.
+
+**As of 2026-08-10 (`RESP-SCHEMA` — response shapes now survive import; branch `develop`,
+UNCOMMITTED, 301 passing):** DD-STRUCT below shipped and the user's own field still showed nothing.
+Cause: import only ever resolved the **request** body schema. Responses were stored as
+`generateExampleFromSchema`'s flattened skeleton, where every array is `[]` — so
+`GET /v1/customers` returning `{ data: [Customer], … }` hit the disk as `{"data": []}` and the element
+shape was gone. Since a GET has no request body and extraction falls back to `responseExamples` for
+those endpoints, **every GET's fields had no recoverable shape at all** (441 of 589 rows in the user's
+real store). New `responseBodySchema` on `UnifiedApiDto` + `ApiMethodDto`, filled with the same
+`resolveSchemaTree` the request body uses; the example is untouched and still stored. 3 bug-first
+tests driving the real import sequence (**2 failing** first), suite 298 → 301. **Existing rows are not
+migrated — re-import is the only way to fill them**, so clients must render nothing rather than guess.
+Worth carrying: the request-side half of this was fixed on 2026-07-15 (`74b00d4`) and the response
+half was never filed — and no test in the repo referenced `responseExample` at all. **Adoption:** VS
+Code the same day; **Desktop has NOT** (`../api2test/docs/TASKS.md`, DD-STRUCT-ADOPT covers both).
+
+**As of 2026-08-10 (`DD-STRUCT` — a field's shape can be read back out; branch `develop`,
+UNCOMMITTED, 298 passing):** Raised from VS Code, where the user was picking a data method for a
+`data: array` field with nothing on screen saying what an element holds. Not a defect in extraction —
+one row per top-level field is the agreed model — but the consequence was that the shape, which is
+sitting in the endpoint's `requestBodySchema`, was unreadable by anything downstream. New
+`describeFieldStructure(requestBodySchema, fieldName)` → `{ kind, elementType?, members[] }`, one
+level deep, `undefined` on anything unreadable so a client can simply omit the display. Description
+only: no rows, no type changes, nothing near generation. 7 bug-first tests (**6 failing** against a
+stub first). **Adoption:** VS Code shows it as a read-only Structure block in Edit Field (same day);
+**Desktop has NOT** — its Data Dictionary UI is its own, and its edit form still shows only the type
+name, so a Desktop user picking a method for an array field is still blind. Noted in
+`../api2test/docs/HANDOVER.md`.
+
+**As of 2026-08-10 (`APP-ID-IMPORT` — the application link is stamped at import; branch `develop`,
+UNCOMMITTED, 291 passing):**
+
+- **Import now carries the application id, not just its name.** `toApiMethodDto` and
+  `ApiLibraryService.importFromAny` take an optional `applicationId` and stamp it on every endpoint;
+  `ApiClassLibraryService.addClass` copies it onto the class entry (so `DictionaryImportService`'s
+  batch path gets it too). `ApiMethodDto`/`ApiClassLibraryDto` gained the documented field. Both params
+  are optional — existing callers compile unchanged, they just keep the old name-only behaviour.
+- **Edition adoption:** VS Code adopted it the same day (picker returns the app record; `addClass`
+  prefers the endpoint's id, name lookup is the legacy fallback). **Desktop has NOT** — its
+  `upload-api` route builds DTO rows itself and sets `application` only, so imports there stay
+  name-linked until it passes the picked app's id through. Recorded in `../api2test/docs/HANDOVER.md`.
+- Rebuild `dist` before either edition can see this (`npm run build`).
+
+**As of 2026-08-08 (`SEND-1`/`NAME-1` — a GET step could not compile, and the API methods are renamed;
+branch `develop`, UNCOMMITTED, 289 passing):**
+
+- **`GetAsync` had a different contract from every other send helper.** It returned `Task<T>` — the
+  deserialised body — while validators and extractors take an `HttpResponseMessage`, so no generated
+  C# E2E test with a GET step could build (the user's `test5`: `CS1503` at both follow-up lines).
+  TypeScript's `get` already returned the response, which settled which side was wrong. Fixed in the
+  curated **C# and Python** library bodies and in `E2ETestGenerationService` (no `<object>`; a GET
+  response is now recorded as capturable).
+- **The names now describe usage, in all three seeded languages** — `ExtractFieldAsync`,
+  `ExtractToken`, `ExtractBodyAs`, `DeleteByPathValueAsync`, `UploadFileAsync`, validators carrying
+  their status codes (`ValidateSuccess_200_201Async`, `ValidateDeleted_200_204Async`, …
+  400/401/403/404/409/422), `PetStoreBaseUrl`/`PetStoreApiKey`/`StripeBaseUrl`/`StripeSecretKey`.
+  Ids are unchanged, so `refreshDefaults` renames in place in existing stores (REFRESH-1).
+- **Saved cases keep working without a migration.** They store method NAMES (`item.ref`, `page.token`),
+  so `canonicalMethodName` + `LEGACY_METHOD_NAMES` translate a pre-rename name at generation, in both
+  the C# and TypeScript emitters. `friendlyMethodName` lost its `METHOD_LABELS` table — the name is
+  the label now (minus `Async`), so label and generated code cannot drift. **Both editions see the
+  label change**; noted in each HANDOVER.
+- **The gap that let it ship is closed.** TS had a `tsc` compile guard, C# had none, so a compile error
+  passed a green string-matching suite. `test/e2eCSharpCompile.test.ts` emits the shipped seed as
+  `ApiMethods.cs` plus a generated chain and runs a real `dotnet build` (skipped, not failed, without a
+  .NET SDK). Bug-first evidence: emitter reverted → CS0308; library reverted → CS0411; both → the
+  user's exact CS1503.
+
+**As of 2026-08-08 (`CLS-7` — a class is built from its endpoint now; branch `develop`, UNCOMMITTED,
+284 passing):**
+
+- **A class no longer depends on owning its dictionary rows.** The user found PetStore `placeOrder`
+  with a class carrying **zero fields** — the VS Code Test Case builder said *"No request fields on
+  this class"* and re-generating wrote nothing (`renderClassCode` → `null` → outcome `empty`, silently).
+  The dictionary de-duplicates by field **name** across all endpoints and each row stores one
+  `sourceEndpointId`, so `id`/`status`/`petId`/`quantity`/`shipDate`/`complete` were all owned by
+  `addPet`, `deletePet` and `getOrderById`; `importApi` then handed `addClass` only the newly-added
+  set, which was empty. A one-to-one link over a many-to-many relationship.
+- **New `DataDictionaryService.fieldsForEndpoint(endpoint)`** — shape from the endpoint's own schema +
+  parameters, `dataMethod`/args copied from the dictionary **by name** (user, 2026-08-08: *"create a
+  class using the values to the data dictionary, do not link them"*). `importApi` and
+  `resyncClassFields` both go through it; nothing filters on `sourceEndpointId` any more.
+- **⚠ Signature change:** `resyncClassFields(id, endpoint?)` — the second argument was the dictionary.
+  With an endpoint it also re-takes `method`/`endpoint`/`contentType`/`requestBodySchema`; without one
+  (endpoint deleted) it refreshes from the class's own stored schema.
+- **Edition impact.** Desktop ships the same defect and fixes it by taking this bump. VS Code adoption
+  is **RB-26** (Generate → **Update & Generate**, overwriting the snapshot — this reverses its RB-16(b))
+  and **RB-27** (drop the local `sourceEndpointId` filters in Add Class + the import dialog).
+  Verified on a copy of the user's live store: placeOrder 0 → 6 fields.
+
+**As of 2026-08-03 (`TYPE-1` C#, `CAP-TYPE`, `RUN-TRX` — branch `develop`, 275 passing):**
+
+- **Three fixes, all raised by the VS Code user running a real PetStore chain end to end.** Each ships to
+  **both** editions; VS Code has taken all three (0.2.32 / 0.2.33), **Desktop has taken none of them.**
+  - **`TYPE-1` (C# only).** `emitCaptures` now prefers `state.varTypes` — the destination field's type —
+    over the store-as pick, and the look-ahead passes `csPropertyName(prop)` so it stops silently
+    resolving to `'string'`. Steps 1 & 3 remain open (read the type from the class model instead of
+    regexing generated C#; add `coerce` to `CodeEmitter`), and until then
+    `generateE2ETestTypeScript.ts` still calls the old 3-arg `emitCaptures` — **the fix is C#-only**.
+  - **`CAP-TYPE`.** `captureTypes(language)` in `services/fieldTypes.ts` — the store-as picker offers
+    concrete per-language types, which pass through `mapCaptureType` untouched. **Desktop impact:** its
+    own `CAPTURE_TYPES` (`ui-browser/.../logic/captureRows.ts`) is now a duplicate; its picker stays
+    abstract until **CAP-CORE**.
+  - **`RUN-TRX`.** `runDotnetTest` passed VSTest's `--logger trx;…` to a Microsoft.Testing.Platform
+    project, so no TRX was ever written and **every** local C# run — passing ones included — was
+    reported as a build failure. `usesTestingPlatform` + `dotnetTestArgs` now pick the command line per
+    platform. **Desktop impact: this was broken there too, identically**, for any `MSTest.Sdk` project;
+    taking the bump fixes it with no client change.
+- **Structural note worth carrying forward:** the sandbox `.csproj` template lives in the **clients**
+  (VS Code: `src/services/sandboxScaffold.ts`), the runner lives **here**, and they have to agree about
+  the test platform. Nothing enforces that — RUN-TRX is what it looks like when they drift.
+
+**As of 2026-08-02 (`OVR-CASE` FIXED — both emitters; branch `develop`):**
+
+- **✅ `OVR-CASE` DONE.** Overrides are keyed by the **spec field name** (correct at rest); the mapping to
+  the generated property is now done at emit, by the same rule the class emitter uses:
+  - **C#** — `formatPropertyName` lifted out of `ClassGenerationService` into `services/classNaming.ts`
+    as exported **`csPropertyName`** (the service delegates). `classInitializer` maps every override key
+    through it for the assigned name, the `csTypeOf` lookup, and the pinned-fields note. So
+    `pet_id → PetId`, and the type is found, so `PetId = 5` is no longer quoted.
+  - **TypeScript** — the opposite rule, and it had the same bypass: generated TS keeps the **raw JSON
+    key**, quoted when it isn't a valid identifier, but the initializer didn't quote — `{ pet-id: … }`
+    against a class declaring `'pet-id'`. `propKey` moved into `tsNaming.ts` as exported **`tsPropKey`**,
+    now used by the request-class emitter *and* the initializer. `tsTypeOf`'s regex escaped as well.
+  - **Python: not affected** — no Python emitter exists (PY-1 parked); only its seed libraries.
+  - **Bug-first:** `test/overrides.test.ts` was the guard that should have caught it and didn't — it
+    keyed overrides `Email`/`Age`, already PascalCase, so the mapping was never exercised. Re-keyed to
+    the real client shape + a snake_case case, plus a non-identifier case in `test/e2eTypeScript.test.ts`
+    (strict-`tsc` compiled). **4 RED → green. Build clean, 260/260.**
+  - **Edition impact: BOTH.** Coordinated version bump on adoption. VS Code's paired `RB-21` (un-skip the
+    pending assertion in `src/test/suite/e2eThreeStepChain.test.ts`) is now **ready to action**; Desktop
+    gets the same fix for free but should re-run any test that pins a field.
+  - **Deliberately not done:** a UI validator for the *casing* — it would mean re-implementing C# and TS
+    naming in every client. A client-side check for **orphaned** pins and **type-mismatched values** is
+    the useful half and is edition work. See `TASKS.md` → `OVR-CASE` (Done).
+
+**As of 2026-08-01 (raised from VS Code — nothing landed in core yet; superseded by the entry above):**
+
+- **🔴 `OVR-CASE` OPEN, and it breaks the build of any test that pins a field.** Found reviewing a
+  three-class PetStore chain generated from the VS Code Test Case builder (add pet → create order →
+  delete order). `classInitializer` ([E2ETestGenerationService.ts:68](../src/services/E2ETestGenerationService.ts:68))
+  emits the override key verbatim — `new PetStoreCreateOrder() { petId = petId, status = "placed" }` —
+  but `ClassGenerationService.formatPropertyName` PascalCases every property, so the class declares
+  `PetId` / `Status`. C# is case-sensitive: the generated test does not compile whenever a pinned
+  field's spec name is not already PascalCase (`petId`, `pet_id`, `shipDate`). Same cause makes
+  `csTypeOf` miss (case-sensitive regex), so every override falls back to `string` and a numeric
+  literal comes out quoted. **Fix at emit** — share `formatPropertyName` with the generator; clients
+  are right to key overrides by field name. Full entry + bug-first plan in `TASKS.md` → `OVR-CASE`.
+  - **Edition impact: BOTH.** Desktop and VS Code use the same generator and the same override shape,
+    so both ship broken today and both need the version bump when it lands.
+  - The rest of the chain checked out: captures thread correctly (pet id → order body, order id →
+    delete URL), verb → send-method mapping is right, and the chain needs no API Method Library at all.
+  - **Paired re-review:** `RB-21` in [`../Api2TestVS/docs/TASKS.md`](../../Api2TestVS/docs/TASKS.md) —
+    un-skip the pending assertion in `src/test/suite/e2eThreeStepChain.test.ts` on delivery.
+
+**As of 2026-07-30 (LIC-6 landed — sat uncommitted until 2026-08-02, committed then):**
+
+- **✅ `LIC-6` DONE** — the licence **presentation** policy is now core's, not each client's.
+  `manager.ts` decides *what* the access is; `src/licensing/presentation.ts` decides *what the user is
+  told about it*: `WARN_WITHIN_DAYS` (7), `daysUntil`, `accessDaysLeft`, `accessWarns`, `licenceSummary`
+  → `LicenceSummary {text,hint,warn,canRemove}`, `nudgeFor` → `Nudge {key,message,kind}`,
+  `describeAccess`. All pure with an injectable `now`; all exported from `index.ts`. **Rendering stays
+  client-side** — core supplies strings + flags, the client picks status bar / toast / page section.
+  13 tests on a fixed `NOW` pin the counts, the shared threshold, the once-only welcome→d7→d1 schedule,
+  singular "1 day", urgency-beats-welcome, "licence ends" ≠ "trial", and that `expired` nudges nothing.
+  - **Edition impact: BOTH.** VS Code adopted it the same day; **Desktop has NOT** — its licence panel
+    still duplicates this wording and will drift. That adoption is the open half.
+
+**As of 2026-07-27 (two generator/dictionary fixes, both raised from VS Code):**
+
+- **✅ E2E send-method routing fixed** (`b2b0fa7`) — a Class step was still selecting its send method
+  inline, so PATCH mis-generated as `PostJson` and a form-encoded PUT as `PutJson`. Now routed through
+  `chooseSendMethod(verb, contentType)` (E2E-SEL-1), so the full verb × content-type matrix comes from
+  one source. Same commit: a standalone Class step with **no OUT capture** now emits the defaulted
+  response validation (`DELETE` → `ValidateDeleteResponseAsync`, else `ValidateResponseAsync`) instead
+  of nothing at all.
+- **✅ URL-param binding fixed** (`46ddd57`) — a path/query field imported as `NOT_ASSIGNED`, so a
+  mandatory one tripped `hasUnassignedMandatory` and **blocked class generation for bodyless
+  endpoints**. URL values are supplied at run time, so `autoMatchDataMethods` now matches a path/query
+  field against the name `parameter` (its real type is unchanged), reusing `findBestMatch`'s type filter
+  + name tiers to pick `ParameterInt/String/Date/Bool`. Added `ParameterBool` (`=> false`) to the csharp
+  and python seed libraries to complete the type set — **seed count 97→98**.
+  - **Edition impact: BOTH** — same generator, same dictionary. Recorded in the VS Code handover as the
+    "2026-07-27 core lifts".
+
+**As of 2026-07-26 (EXEC series, `06e5edd`, branch `develop`):**
+
+- **✅ `EXEC-2` DONE** — Desktop's branded run-report lifted into `services/runReport.ts`:
+  `buildExecutionReportHtml(ex)` returns one self-contained inline-styled HTML doc (print-to-PDF) —
+  header meta, summary band, per-test breakdown with the full API call chain.
+- **✅ `EXEC-1` shared shapes DONE** (the task stays open for its edition-side half) —
+  `models/execution.ts`: `ExecResult` / `Execution` / `ExecResultStatus` + `ApiCall`, now single-sourced
+  here and imported by `TestRunnerService`, so runner and report can't drift. Exported via `./models`.
+  - **Orchestration is deliberately NOT in core** (edition-boundary decision, 2026-07-17): core owns the
+    primitives + the shapes; each edition wires deploy→run→parse for its own environment.
+
+**As of 2026-07-25 (E2E-SEL-1 + APIM-SEND-1 + RB-1/RB-4 core pieces landed, branch `develop`):**
+
+- **✅ `E2E-SEL-1` DONE** (`1866457`) — `services/e2eMethodSelection.ts` (exported):
+  `chooseSendMethod(verb, contentType)` and `chooseExtractMethod(responseField, verb)`, smart defaults only
+  (clients keep the full list). Extract returns the **method name only** — type stays with `E2E-CAP-1`, so
+  **not subsumed**; both ship. Sub-fix: TS seed brought to validator parity (4 `Validate…ResponseAsync`
+  added). Bug-first RED→GREEN for both helpers. **236/236 green, build clean.**
+- **✅ `APIM-SEND-1` DONE** (`0f2f1bb`) — send-method matrix completed (`PutFormAsync`, `PatchJsonAsync`,
+  `PatchFormAsync` in all 3 languages), the prerequisite for `chooseSendMethod`.
+- **✅ `RB-1`/`RB-3` DONE** (`24b332e`) — `dataMethodMatching.ts` (`orderDataMethodsForField`,
+  `sortDataMethodsByName`, shared `typeClass`; `DataDictionaryService` duplicate deleted).
+- **✅ `RB-4` core piece DONE** (`5c9d2cf`) — `ApiClassLibraryService.resyncClassFields`.
+- _Earlier this session (still current):_
 
 - **✅ `#52` DONE (guard added; already functionally fixed).** Integer ids were NOT widening to
   `decimal` — `DataDictionaryService` keeps `integer` distinct and `ClassGenerationService.getCSharpType`

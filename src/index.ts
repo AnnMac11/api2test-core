@@ -18,12 +18,20 @@ export * from './adapters';
 // ── Engine services ────────────────────────────────────────────────────────────
 export { ApiFormatAdapter } from './services/ApiFormatAdapter';
 export { ApiFormatDetector } from './services/ApiFormatDetector';
-export { OpenApiParserService } from './services/OpenApiParserService';
-export { PostmanParserService } from './services/PostmanParserService';
+// (No per-format parser exports: `ApiFormatAdapter` handles Postman and OpenAPI along with the other
+//  formats, and the two standalone parser services it superseded were removed — IMPORT-DEAD.)
 export { ApiLibraryService } from './services/ApiLibraryService';
 export { ApiClassLibraryService } from './services/ApiClassLibraryService';
 export { ApiMethodLibraryService } from './services/ApiMethodLibraryService';
 export { DataDictionaryService, NOT_ASSIGNED, PARAMETER } from './services/DataDictionaryService';
+export {
+    typeClass, coarseKind, dataMethodKindLabel, orderDataMethodsForField, sortDataMethodsByName
+} from './services/dataMethodMatching';
+export type { TypeClass, CoarseKind, DataMethodOption } from './services/dataMethodMatching';
+// DD-STRUCT: what is inside one dictionary field, read back out of the endpoint's stored schema —
+// display only, so a client can show the user what an `object`/`array` field actually holds.
+export { describeFieldStructure } from './services/fieldStructure';
+export type { FieldStructure, FieldStructureMember } from './services/fieldStructure';
 export { DataLibraryService } from './services/DataLibraryService';
 export { DictionaryImportService } from './services/DictionaryImportService';
 export type { DictionaryImportResult, BatchImportResult, BatchImportItem } from './services/DictionaryImportService';
@@ -34,6 +42,9 @@ export type { ClassGenerationState, ClassGenerationOutcome, BatchGenerateResult 
 export { rollupRag, resultToRag, deriveClassState } from './services/classStatus';
 export { ClassGenerationService } from './services/ClassGenerationService';
 export { buildClassName } from './services/classNaming';
+// TYPE-1: the one stored-type → declared-type map. Both class emitters delegate to it, so a client can
+// show the user the exact type the generated code will declare (C# `int`, TS `number`, Python `int`).
+export { captureTypes, fieldDisplayType } from './services/fieldTypes';
 export { hasUnassignedMandatory, isMandatoryField, isDataMethodUnassigned } from './services/fieldCompleteness';
 export type { CompletableField } from './services/fieldCompleteness';
 export { TestGenerationService } from './services/TestGenerationService';
@@ -53,6 +64,12 @@ export type { Entitlement, EntitlementClaims } from './licensing/entitlements';
 export { verifyEntitlement, UNLICENSED, LICENSE_PUBLIC_KEY } from './licensing/entitlements';
 export type { TokenStore, TrialStore, TrialData, AccessState, Access, LicenseManager } from './licensing/manager';
 export { createLicenseManager, TRIAL_DAYS } from './licensing/manager';
+// How that access is put to the user (LIC-6) — day counts, the warning threshold, the reminder
+// schedule and the wording. Policy, so it is shared; rendering stays in each client.
+export type { LicenceSummary, Nudge } from './licensing/presentation';
+export {
+  WARN_WITHIN_DAYS, daysUntil, accessDaysLeft, accessWarns, licenceSummary, nudgeFor, describeAccess,
+} from './licensing/presentation';
 
 // deployUnit (DEP-1) — the one code path that deploys a complete compilable unit (libraries +
 // tests + referenced classes) into a target project, parameterised by emitter + layout. Clients
@@ -106,6 +123,13 @@ export {
 export type { MethodParamMap, PickerLike, CallGroup } from './services/e2eCaseLogic';
 // Response-example flattener (E2E-RESP core half) — dotted field paths for the builder's field dropdown.
 export { responseFields } from './services/responseFields';
+// Smart-default method selection (E2E-SEL-1) — the send method a class step pre-selects from its verb +
+// content-type. A default only; the client keeps the full list. Shared so both editions agree.
+export { chooseSendMethod, chooseExtractMethod, isFormEncoded } from './services/e2eMethodSelection';
+// Branded run-report (EXEC-2) — one self-contained HTML doc (print-to-PDF) from an Execution. Shared so
+// both editions render the identical report.
+export { buildExecutionReportHtml } from './services/runReport';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
 export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
-export type { RawTestResult, BuildResult, ApiCall, VitestRun } from './services/TestRunnerService';
+export type { RawTestResult, BuildResult, VitestRun } from './services/TestRunnerService';
+// ApiCall + the Execution/ExecResult result shapes (EXEC-1) come from ./models (single-sourced).

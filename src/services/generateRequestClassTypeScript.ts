@@ -16,7 +16,8 @@
 import { FieldConfiguration, ClassGenerationRequest } from '../models/ClassGenerationDto';
 import { NOT_ASSIGNED, PARAMETER } from './DataDictionaryService';
 import { librariesDir, classesDir } from './generatedNamespaces';
-import { tsSymbol } from './tsNaming';
+import { tsSymbol, tsPropKey as propKey } from './tsNaming';
+import { fieldDisplayType } from './fieldTypes';
 
 const isFormEncoded = (ct?: string) => (ct || '').toLowerCase().includes('x-www-form-urlencoded');
 
@@ -123,22 +124,13 @@ function hasAssignedMethod(field: FieldConfiguration): boolean {
     && field.dataMethod !== PARAMETER);
 }
 
-/** A field name usable as-is, or quoted when it isn't a valid JS identifier (keeps the exact JSON key). */
-function propKey(name: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : `'${name.replace(/'/g, "\\'")}'`;
-}
-
+/**
+ * TYPE-1: delegates to the shared map, so the type a client shows the user is the type this emitter
+ * declares. (object/array still become `unknown` there — it accepts whatever the assigned data method
+ * returns and, as a declared type, serialises correctly.)
+ */
 function tsType(type: string): string {
-  switch ((type || '').toLowerCase()) {
-    case 'string': return 'string';
-    case 'int': case 'integer': case 'decimal': case 'number': case 'double': return 'number';
-    case 'bool': case 'boolean': return 'boolean';
-    case 'datetime': case 'date': return 'string';
-    // object/array hold whatever the assigned data method returns — `unknown` accepts any value and,
-    // as a declared type, still serialises correctly.
-    case 'array': case 'object': return 'unknown';
-    default: return 'string';
-  }
+  return fieldDisplayType(type, 'typescript');
 }
 
 function emptyDefault(type: string): string {

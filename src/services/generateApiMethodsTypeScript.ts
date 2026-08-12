@@ -75,18 +75,10 @@ export function generateApiMethodsTypeScript(
     ts += otherMethods.map((m) => methodFromCode(m)).join('\n');
   }
 
-  // Typed field extraction — reads a dotted field path off the JSON body and returns it as T. TS keeps
-  // the value's native type automatically (a number stays a number), so no explicit conversion is needed.
-  ts += `  /**
-   * Read a response field by dotted path (e.g. \`data.id\`) and return it as T. The value keeps its
-   * native JSON type, so a captured id drops straight into a numeric request field with no conversion.
-   */
-  static async extractField<T>(response: Response, fieldPath: string): Promise<T> {
-    const data: unknown = await response.clone().json();
-    const raw = fieldPath.split('.').reduce<any>((o, k) => (o == null ? o : o[k]), data);
-    return raw as T;
-  }
-}
+  // Typed field extraction (E2E-CAP-1) used to be appended here as a second `extractFields` on top of the
+  // library's `extractFieldFromResponse` — one operation under two names. The curated `ExtractFieldAsync`
+  // now takes the store-as type itself, so it is emitted from the library like every other method.
+  ts += `}
 
 /**
  * Captures each API call (request + response) so the local/CI runner can extract it from the test's

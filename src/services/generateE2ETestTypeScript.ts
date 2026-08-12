@@ -14,7 +14,9 @@
  */
 import { E2EPage, E2ETestCaseRow, E2ECaseItem, E2EGenContext } from '../models/E2EDto';
 import { librariesDir, classesDir, testsDir } from './generatedNamespaces';
-import { tsSymbol } from './tsNaming';
+import { tsSymbol, tsPropKey } from './tsNaming';
+import { mapCaptureType } from './e2eCaseLogic';
+import { canonicalMethodName } from './e2eMethodSelection';
 
 interface GenState { lastResponse: string | null }
 
@@ -62,7 +64,9 @@ function buildUrlWithPathArgs(endpoint: string, item?: E2ECaseItem): string {
 
 /** Find a property's declared TS type in the generated class code (defaults to string). */
 function tsTypeOf(classCode: string, prop: string): string {
-  const m = (classCode || '').match(new RegExp(`\\b${prop}\\s*[?!]?\\s*:\\s*([A-Za-z]+)`));
+  // Escaped: a field name may carry regex metacharacters (`pet.id`), which would otherwise match loosely.
+  const escaped = prop.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+  const m = (classCode || '').match(new RegExp(`\\b${escaped}'?\\s*[?!]?\\s*:\\s*([A-Za-z]+)`));
   return m ? m[1] : 'string';
 }
 
@@ -80,7 +84,9 @@ function classConstruct(ref: string, item: E2ECaseItem | undefined, ctx: E2EGenC
   const code = (ctx.classes.find((c: any) => c.className === ref)?.classCode) || '';
   const parts = Object.entries(ov || {})
     .filter(([, v]) => v && v.value !== '' && v.value != null)
-    .map(([prop, v]) => `${prop}: ${overrideValue(v as any, tsTypeOf(code, prop))}`);
+    // OVR-CASE (TS half): quote the key exactly as the class emitter declared it — the type is still
+    // looked up by the raw field name, which is what the property is called.
+    .map(([field, v]) => `${tsPropKey(field)}: ${overrideValue(v as any, tsTypeOf(code, field))}`);
   return parts.length ? `Object.assign(new ${ref}(), { ${parts.join(', ')} })` : `new ${ref}()`;
 }
 
@@ -119,8 +125,27 @@ function classStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenS
   }
   state.lastResponse = respVar;
 
+  emitCaptures(item, respVar, lines);
+}
+
+/**
+ * OUT captures (E2E-CAP-1): the user's typed rows on a Class step — one `extractField(resp, field, type)`
+ * line each, converting to the user's chosen store-as type. Core owns this; the client only supplies rows.
+ * Falls back to the legacy single untyped `capture` (string) when no typed rows are present.
+ */
+function emitCaptures(item: E2ECaseItem, respVar: string, lines: string[]): void {
+  const rows = item.captures || [];
+  if (rows.length) {
+    for (const c of rows) {
+      const variable = c?.variable?.trim();
+      if (!variable || !c.fieldPath?.trim()) { continue; }
+      const type = mapCaptureType(c.type, 'typescript');
+      lines.push(`    const ${variable} = await ApiMethods.extractField(${respVar}, ${JSON.stringify(c.fieldPath.trim())}, ${JSON.stringify(type)});`);
+    }
+    return;
+  }
   if (item.capture?.fieldPath && item.capture.variable) {
-    lines.push(`    const ${item.capture.variable} = await ApiMethods.extractFieldFromResponse(${respVar}, ${JSON.stringify(item.capture.fieldPath)});`);
+    lines.push(`    const ${item.capture.variable} = await ApiMethods.extractField(${respVar}, ${JSON.stringify(item.capture.fieldPath)});`);
   }
 }
 
@@ -147,16 +172,19 @@ function resolveArg(param: string, item: E2ECaseItem, state: GenState, ctx: E2EG
 }
 
 function methodStep(item: E2ECaseItem, n: number, ctx: E2EGenContext, state: GenState, lines: string[], pairedClass?: E2ECaseItem): void {
-  const m = ctx.methods.find((x: any) => x.methodName === item.ref);
+  // A case saved before the NAME-1 rename stores the old method name; core translates it so the step still
+  // resolves to a library method and the generated call uses the name that exists today.
+  const ref = canonicalMethodName(item.ref);
+  const m = ctx.methods.find((x: any) => x.methodName === ref);
   const params: string[] = (m?.parameters || '')
     .split(',').map((p: string) => p.trim()).filter(Boolean).map((p: string) => p.split(':')[0].trim());
   const args = params.map((p: string) => resolveArg(p, item, state, ctx, pairedClass));
   const awaited = isAsync(m?.returnType) ? 'await ' : '';
   const resultVar = producedVar(item, n);
-  const call = `ApiMethods.${tsSymbol(item.ref)}(${args.join(', ')})`;
+  const call = `ApiMethods.${tsSymbol(ref)}(${args.join(', ')})`;
 
-  lines.push(`    // Step ${n}: ${item.ref}`);
-  if (/^validate/i.test(item.ref) && returnsBool(m?.returnType)) {
+  lines.push(`    // Step ${n}: ${ref}`);
+  if (/^validate/i.test(ref) && returnsBool(m?.returnType)) {
     lines.push(`    expect(${awaited}${call}).toBe(true);`);
   } else {
     lines.push(`    const ${resultVar} = ${awaited}${call};`);
@@ -213,8 +241,9 @@ export function generateE2ETestTypeScript(row: E2ETestCaseRow, page: E2EPage, ct
     ...[...classRefs].map(c => `import { ${c} } from '${rel(`${classesDir(page.application)}/${c}`)}';`),
   ];
 
-  const tokenObj = ctx.methods.find((m: any) => m.methodName === page.token);
-  const tokenCall = `ApiMethods.${tsSymbol(page.token)}()`;
+  const tokenRef = canonicalMethodName(page.token);
+  const tokenObj = ctx.methods.find((m: any) => m.methodName === tokenRef);
+  const tokenCall = `ApiMethods.${tsSymbol(tokenRef)}()`;
   const tokenLine = isAsync(tokenObj?.returnType) ? `    const token = await ${tokenCall};` : `    const token = ${tokenCall};`;
 
   return `// Auto-generated by API2Test. Do not edit by hand.

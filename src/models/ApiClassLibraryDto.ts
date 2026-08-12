@@ -38,8 +38,14 @@ export interface ApiClassLibraryDto {
     endpointId: string;
     /** Generated C# class name, e.g. `ABCWebsiteAddPet`. */
     className: string;
-    /** Application this class belongs to. */
+    /** Display-only application name. The rename-proof link is {@link applicationId}. */
     application: string;
+    /**
+     * Id of the application this class belongs to — copied from the source endpoint at
+     * {@link ApiClassLibraryService.addClass} (APP-ID-IMPORT). Drives deploy folders and namespaces,
+     * which fall back to {@link application} when it is absent (rows created before APP-ID-IMPORT).
+     */
+    applicationId?: string;
     /** HTTP method of the source endpoint, e.g. `POST`. */
     method: string;
     /** Endpoint path, e.g. `/pet`. */
