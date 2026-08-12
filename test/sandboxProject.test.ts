@@ -16,14 +16,12 @@ const NO_DOTNET: DotnetInfo = { hasSdk: false, sdks: [], runtimeMajors: [], tfm:
 const NODE_OK: ProbeRunner = (cmd) => (cmd === 'node' ? 'v22.14.0' : cmd === 'npm' ? '10.9.2' : null);
 const NO_NODE: ProbeRunner = () => null;
 
-// ── Language symmetry: a real scaffolder per shipped language, honesty for the rest ───────────
+// ── Language symmetry: a real scaffolder per shipped language ─────────────────────────────────
 
-test('scaffolders exist for csharp + typescript; python is an honest not-yet, not a crash', () => {
+test('a scaffolder exists for every shipped language — csharp, typescript AND python', () => {
   assert.equal(typeof SANDBOX_SCAFFOLDERS.csharp, 'function');
   assert.equal(typeof SANDBOX_SCAFFOLDERS.typescript, 'function');
-  const res = ensureSandbox('python', tmpDir());
-  assert.equal(res.ok, false);
-  assert.match(res.reason || '', /PY-1|not available|yet/i);
+  assert.equal(typeof SANDBOX_SCAFFOLDERS.python, 'function');
 });
 
 // ── C# sandbox (lifted from Desktop sandboxProject.ts) ────────────────────────────────────────
@@ -96,6 +94,52 @@ test('typescript: missing node/npm -> ok:false naming the missing tool, and NOTH
   assert.equal(res.ok, false);
   assert.match(res.reason || '', /Node\.js/);
   assert.deepEqual(fs.readdirSync(dir), [], 'must not scaffold without a toolchain');
+});
+
+// ── Python sandbox (the SP-PY pytest scaffold) ────────────────────────────────────────────────
+
+// Probe runner: python present; deps import probe answers 'ok' only when `deps` is true.
+const pyRunner = (deps: boolean): ProbeRunner => (cmd, args) => {
+  if (cmd !== 'python') return null;
+  if (args[0] === '--version') return 'Python 3.13.5';
+  if (args[0] === '-c') return deps ? 'ok' : null;
+  return null;
+};
+const NO_PYTHON: ProbeRunner = () => null;
+
+test('python: scaffolds requirements.txt declaring pytest + requests + faker', () => {
+  const dir = tmpDir();
+  const res = ensureSandbox('python', dir, { run: pyRunner(false) });
+  assert.equal(res.ok, true);
+  assert.equal(res.projectPath, dir, 'Py projectPath is the project dir (what runPyCompile/runPytest take)');
+  const reqs = fs.readFileSync(path.join(dir, 'requirements.txt'), 'utf8');
+  for (const dep of ['pytest', 'requests', 'faker']) {
+    assert.match(reqs, new RegExp(`^${dep}`, 'm'), `${dep} missing from requirements.txt`);
+  }
+});
+
+test('python: missing interpreter -> ok:false naming Python, and NOTHING written', () => {
+  const dir = tmpDir();
+  const res = ensureSandbox('python', dir, { run: NO_PYTHON });
+  assert.equal(res.ok, false);
+  assert.match(res.reason || '', /Python/);
+  assert.deepEqual(fs.readdirSync(dir), [], 'must not scaffold without an interpreter');
+});
+
+test('python: depsReady reflects whether the declared packages import (install stays an explicit client step)', () => {
+  const dir = tmpDir();
+  const before = ensureSandbox('python', dir, { run: pyRunner(false) });
+  assert.equal(before.depsReady, false, 'pytest/requests/faker not importable yet');
+  const after = ensureSandbox('python', dir, { run: pyRunner(true) });
+  assert.equal(after.depsReady, true);
+});
+
+test('python: idempotent — an unchanged requirements.txt is not rewritten', () => {
+  const dir = tmpDir();
+  ensureSandbox('python', dir, { run: pyRunner(false) });
+  const stat1 = fs.statSync(path.join(dir, 'requirements.txt'));
+  ensureSandbox('python', dir, { run: pyRunner(false) });
+  assert.equal(fs.statSync(path.join(dir, 'requirements.txt')).mtimeMs, stat1.mtimeMs, 'must not rewrite unchanged (watcher churn)');
 });
 
 test('typescript: depsReady reflects node_modules state (install stays an explicit client step)', () => {

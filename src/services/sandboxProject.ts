@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { TargetLanguage } from '../adapters/CodeEmitter';
-import { detectDotnet, detectToolchain, DotnetInfo, ProbeRunner } from './toolchainDetection';
+import { detectDotnet, detectToolchain, probeVersion, DotnetInfo, ProbeRunner } from './toolchainDetection';
 
 /**
  * The managed local sandbox (SBX-1) — a minimal runnable test project the app lays down (once) so
@@ -44,7 +44,7 @@ export interface EnsureSandboxResult {
   projectPath?: string;
   /** Chosen target framework (C# only). */
   tfm?: string;
-  /** TS only: whether the declared dev-dependencies are present in node_modules. */
+  /** TS/Python only: whether the declared dependencies are installed (node_modules / importable). */
   depsReady?: boolean;
 }
 
@@ -117,10 +117,31 @@ function scaffoldTypeScript(dir: string, opts: EnsureSandboxOptions): EnsureSand
   return { ok: true, projectPath: dir, depsReady };
 }
 
-/** Per-language sandbox scaffolders — csharp + typescript today; python arrives with PY-1. */
+// Python sandbox deps — what the generated code imports (pytest runs it, api_methods.py uses
+// requests, data_generator.py uses faker). Unpinned: resolved through the user's own pip index.
+const PY_DEPS = ['pytest', 'requests', 'faker'];
+
+function scaffoldPython(dir: string, opts: EnsureSandboxOptions): EnsureSandboxResult {
+  const toolchain = detectToolchain('python', ...(opts.run ? [opts.run] as const : []));
+  const missing = toolchain.tools.filter(t => !t.present);
+  if (missing.length) {
+    return { ok: false, reason: `Missing on this machine: ${missing.map(t => t.name).join(', ')}. Install Python 3 from python.org, then run again.` };
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  writeIfChanged(path.join(dir, 'requirements.txt'), PY_DEPS.join('\n') + '\n');
+
+  // pip installs globally/per-user rather than into the project dir, so "installed?" is answered by
+  // the interpreter itself: can it import the declared packages? (print so success has stdout).
+  const run = opts.run ?? probeVersion;
+  const depsReady = run('python', ['-c', `import ${PY_DEPS.join(', ')}; print('ok')`]) !== null;
+  return { ok: true, projectPath: dir, depsReady };
+}
+
+/** Per-language sandbox scaffolders — one per shipped TargetLanguage. */
 export const SANDBOX_SCAFFOLDERS: Partial<Record<TargetLanguage, (dir: string, opts: EnsureSandboxOptions) => EnsureSandboxResult>> = {
   csharp: scaffoldCSharp,
   typescript: scaffoldTypeScript,
+  python: scaffoldPython,
 };
 
 /**

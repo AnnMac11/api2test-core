@@ -398,7 +398,10 @@ against core. Bug-first per task; coordinate version bumps.
 - [x] **SBX-1 — managed local sandbox. DONE 2026-07-17 (branch `develop`).** New
   `services/sandboxProject.ts`: `ensureSandbox(language, dir)` → `{ ok, reason?, projectPath?,
   tfm?, depsReady? }`, language-keyed off `SANDBOX_SCAFFOLDERS` (csharp + typescript; python →
-  honest not-yet pointing at PY-1). C# = Desktop's scaffold lifted (tfm from core `detectDotnet`,
+  honest not-yet — **superseded: python scaffolder added 2026-08-12** with SP-PY: `requirements.txt`
+  pytest/requests/faker, `depsReady` via an import probe — pip installs per-user, not into the dir, so
+  install stays an explicit user step. Bug-first in `sandboxProject.test.ts`, RED 5 → GREEN 12,
+  suite 350/351). C# = Desktop's scaffold lifted (tfm from core `detectDotnet`,
   pinned MSTest/Bogus csproj, write-only-on-change so no needless restores). TS = the NF-2
   scaffold created here: `package.json` (private; typescript/vitest/@faker-js/faker devDeps) +
   `tsconfig.json` pinned to the emit layer's proven compile settings (strict/ES2022/bundler/
