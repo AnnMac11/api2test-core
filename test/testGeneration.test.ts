@@ -1,14 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { TestGenerationService } from '../src/services/TestGenerationService';
 import { FileStorageService } from '../src/services/FileStorageService';
 import { librariesNs, classesNs, testsNs } from '../src/services/generatedNamespaces';
+import { tmpDir } from './tmp';
 
 function svc(): TestGenerationService {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-gen-'));
+  const dir = tmpDir('a2t-gen-');
   return new TestGenerationService(new FileStorageService(dir));
 }
 

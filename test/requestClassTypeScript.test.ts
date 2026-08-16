@@ -7,17 +7,17 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateRequestClassTypeScript } from '../src/services/generateRequestClassTypeScript';
 import { ClassGenerationRequest } from '../src/models/ClassGenerationDto';
 import { PARAMETER } from '../src/services/DataDictionaryService';
+import { tmpDir } from './tmp';
 
 /** Compile the emitted class in the real Classes/<App> + Libraries layout (stub DataGenerator + ApiMethods). */
 function assertCompiles(code: string, application: string): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-tsc-'));
+  const dir = tmpDir('a2t-tsc-');
   const seg = application.replace(/[^A-Za-z0-9]/g, '');
   const mk = (rel: string, contents: string) => {
     const full = path.join(dir, rel);

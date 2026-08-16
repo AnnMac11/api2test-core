@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { dotnetTestArgs, usesTestingPlatform } from '../src/services/TestRunnerService';
+import { tmpDir } from './tmp';
 
 /**
  * RUN-TRX — every local run reported "dotnet test produced no TRX", whether the tests passed or failed.
@@ -18,7 +19,7 @@ import { dotnetTestArgs, usesTestingPlatform } from '../src/services/TestRunnerS
  */
 
 function projectDir(contents: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-runner-'));
+  const dir = tmpDir('a2t-runner-');
   fs.writeFileSync(path.join(dir, 'ApiTests.csproj'), contents, 'utf8');
   return dir;
 }

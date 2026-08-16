@@ -6,16 +6,16 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateDataLibraryTypeScript } from '../src/services/generateDataLibraryTypeScript';
 import { DataMethodCode } from '../src/services/generateDataLibrary';
+import { tmpDir } from './tmp';
 
 /** Compile the emitted dataGenerator.ts under strict TS with an ambient `@faker-js/faker` declaration. */
 function assertCompiles(code: string): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-tsc-'));
+  const dir = tmpDir('a2t-tsc-');
   fs.writeFileSync(path.join(dir, 'dataGenerator.ts'), code);
   // faker is a dependency of the generated PROJECT, not present in this sandbox — declare it ambiently
   // so the import resolves and `faker.*` type-checks as any.

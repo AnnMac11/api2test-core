@@ -7,12 +7,12 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateE2ETestPython } from '../src/services/generateE2ETestPython';
 import { E2EPage, E2ETestCaseRow, E2EGenContext } from '../src/models/E2EDto';
+import { tmpDir } from './tmp';
 
 function hasPython(): boolean {
   try { execFileSync('python', ['--version'], { stdio: 'pipe' }); return true; } catch { return false; }
@@ -116,7 +116,7 @@ test('a pinned field whose name is not a valid identifier is set via setattr', (
 
 test('runtime: the generated chain runs against a stub library and the captured value reaches step 2', { skip: !hasPython() }, () => {
   const code = generateE2ETestPython(ROW, PAGE, CTX);
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pye-'));
+  const root = tmpDir('a2t-pye-');
   const mk = (rel: string, contents: string) => {
     const full = path.join(root, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });

@@ -1,13 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import { DeployDestinationService } from '../src/services/DeployDestinationService';
 import { FileStorageService } from '../src/services/FileStorageService';
+import { tmpDir } from './tmp';
 
 function svc(): DeployDestinationService {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-dest-'));
+  const dir = tmpDir('a2t-dest-');
   return new DeployDestinationService(new FileStorageService(dir));
 }
 

@@ -2,13 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { ensureSandbox, SANDBOX_SCAFFOLDERS } from '../src/services/sandboxProject';
 import type { DotnetInfo, ProbeRunner } from '../src/services/toolchainDetection';
-
-function tmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-sandbox-'));
-}
+import { tmpDir } from './tmp';
 
 const DOTNET_8: DotnetInfo = { hasSdk: true, sdks: ['8.0.404'], runtimeMajors: [8], tfm: 'net8.0' };
 const NO_DOTNET: DotnetInfo = { hasSdk: false, sdks: [], runtimeMajors: [], tfm: undefined };
@@ -27,7 +23,7 @@ test('a scaffolder exists for every shipped language — csharp, typescript AND 
 // ── C# sandbox (lifted from Desktop sandboxProject.ts) ────────────────────────────────────────
 
 test('csharp: scaffolds sandbox.csproj targeting the detected tfm with pinned test packages', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('csharp', dir, { dotnet: DOTNET_8 });
   assert.equal(res.ok, true);
   assert.equal(res.tfm, 'net8.0');
@@ -40,7 +36,7 @@ test('csharp: scaffolds sandbox.csproj targeting the detected tfm with pinned te
 });
 
 test('csharp: no .NET SDK -> ok:false with an actionable reason, and NOTHING written', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('csharp', dir, { dotnet: NO_DOTNET });
   assert.equal(res.ok, false);
   assert.match(res.reason || '', /\.NET SDK/);
@@ -48,7 +44,7 @@ test('csharp: no .NET SDK -> ok:false with an actionable reason, and NOTHING wri
 });
 
 test('csharp: idempotent — unchanged tfm leaves the file alone, changed tfm rewrites it', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const first = ensureSandbox('csharp', dir, { dotnet: DOTNET_8 });
   const stat1 = fs.statSync(first.projectPath!);
   const res2 = ensureSandbox('csharp', dir, { dotnet: DOTNET_8 });
@@ -59,7 +55,7 @@ test('csharp: idempotent — unchanged tfm leaves the file alone, changed tfm re
 });
 
 test('csharp: a corrupted csproj is restored on the next ensure', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('csharp', dir, { dotnet: DOTNET_8 });
   fs.writeFileSync(res.projectPath!, '<Project>corrupt</Project>');
   ensureSandbox('csharp', dir, { dotnet: DOTNET_8 });
@@ -69,7 +65,7 @@ test('csharp: a corrupted csproj is restored on the next ensure', () => {
 // ── TS sandbox (the NF-2 vitest scaffold, created here) ───────────────────────────────────────
 
 test('typescript: scaffolds package.json (typescript+vitest+faker devDeps) + strict tsconfig', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('typescript', dir, { run: NODE_OK });
   assert.equal(res.ok, true);
   assert.equal(res.projectPath, dir, 'TS projectPath is the project dir (what runVitest/runTsc take)');
@@ -89,7 +85,7 @@ test('typescript: scaffolds package.json (typescript+vitest+faker devDeps) + str
 });
 
 test('typescript: missing node/npm -> ok:false naming the missing tool, and NOTHING written', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('typescript', dir, { run: NO_NODE });
   assert.equal(res.ok, false);
   assert.match(res.reason || '', /Node\.js/);
@@ -108,7 +104,7 @@ const pyRunner = (deps: boolean): ProbeRunner => (cmd, args) => {
 const NO_PYTHON: ProbeRunner = () => null;
 
 test('python: scaffolds requirements.txt declaring pytest + requests + faker', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('python', dir, { run: pyRunner(false) });
   assert.equal(res.ok, true);
   assert.equal(res.projectPath, dir, 'Py projectPath is the project dir (what runPyCompile/runPytest take)');
@@ -119,7 +115,7 @@ test('python: scaffolds requirements.txt declaring pytest + requests + faker', (
 });
 
 test('python: missing interpreter -> ok:false naming Python, and NOTHING written', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const res = ensureSandbox('python', dir, { run: NO_PYTHON });
   assert.equal(res.ok, false);
   assert.match(res.reason || '', /Python/);
@@ -127,7 +123,7 @@ test('python: missing interpreter -> ok:false naming Python, and NOTHING written
 });
 
 test('python: depsReady reflects whether the declared packages import (install stays an explicit client step)', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const before = ensureSandbox('python', dir, { run: pyRunner(false) });
   assert.equal(before.depsReady, false, 'pytest/requests/faker not importable yet');
   const after = ensureSandbox('python', dir, { run: pyRunner(true) });
@@ -135,7 +131,7 @@ test('python: depsReady reflects whether the declared packages import (install s
 });
 
 test('python: idempotent — an unchanged requirements.txt is not rewritten', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   ensureSandbox('python', dir, { run: pyRunner(false) });
   const stat1 = fs.statSync(path.join(dir, 'requirements.txt'));
   ensureSandbox('python', dir, { run: pyRunner(false) });
@@ -143,7 +139,7 @@ test('python: idempotent — an unchanged requirements.txt is not rewritten', ()
 });
 
 test('typescript: depsReady reflects node_modules state (install stays an explicit client step)', () => {
-  const dir = tmpDir();
+  const dir = tmpDir('a2t-sandbox-');
   const before = ensureSandbox('typescript', dir, { run: NODE_OK });
   assert.equal(before.depsReady, false, 'no node_modules yet');
 

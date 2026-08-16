@@ -6,17 +6,17 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { emitVitestReporter, parseVitestCallsMap, mergeVitestCalls, RawTestResult } from '../src/services/TestRunnerService';
+import { tmpDir } from './tmp';
 
 const mkLog = (s: string) => ({ content: s, type: 'stdout' });
 const CALL = (o: object) => mkLog('##A2T_CALL## ' + JSON.stringify(o));
 
 test('the emitted reporter attributes markers to the right test (nested suite → fullName)', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-rep-'));
+  const dir = tmpDir('a2t-rep-');
   const reporterPath = path.join(dir, 'reporter.cjs');
   const callsFile = path.join(dir, 'calls.json');
   fs.writeFileSync(reporterPath, emitVitestReporter());

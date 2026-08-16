@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { deployUnit, safeArtifactName, safeFileName, projectDirOf, cleanGeneratedArtifacts, BUILD_VALIDATORS } from '../src/services/deployUnit';
 import type { DeployCase, DeployUnitOptions } from '../src/services/deployUnit';
 import { CSharpEmitter } from '../src/adapters/CSharpEmitter';
 import { TypeScriptEmitter } from '../src/adapters/TypeScriptEmitter';
 import type { CodeEmitter } from '../src/adapters/CodeEmitter';
 import type { StorageProvider } from '../src/adapters/StorageProvider';
+import { tmpDir } from './tmp';
 
 // deployUnit only uses the emitters' library-emission + naming surface; the storage-backed
 // class/test generation paths are never touched here, so a null storage is safe.
@@ -17,7 +17,7 @@ const csharp = new CSharpEmitter(nullStorage);
 const typescript = new TypeScriptEmitter(nullStorage);
 
 function tmpRoot(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-deploy-'));
+  return tmpDir('a2t-deploy-');
 }
 
 function baseOpts(root: string, emitter: CodeEmitter, extra: Partial<DeployUnitOptions> = {}): DeployUnitOptions {

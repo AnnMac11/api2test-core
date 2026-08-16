@@ -1,17 +1,15 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { FileStorageService } from '../src/services/FileStorageService';
 import { CSharpEmitter } from '../src/adapters/CSharpEmitter';
 import { TypeScriptEmitter, emitterFor } from '../src/adapters/TypeScriptEmitter';
 import { PythonEmitter } from '../src/adapters/PythonEmitter';
 import { ClassGenerationRequest } from '../src/models/ClassGenerationDto';
 import { PARAMETER } from '../src/services/DataDictionaryService';
+import { tmpDir } from './tmp';
 
 function emitter(): CSharpEmitter {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-emit-'));
+    const dir = tmpDir('a2t-emit-');
     return new CSharpEmitter(new FileStorageService(dir));
 }
 
@@ -82,7 +80,7 @@ test('PARAMETER field emits a settable placeholder, not a DataGenerator call', (
 // ── TS-C1: language seam ──────────────────────────────────────────────────────────────────────
 
 function storageDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-emit-'));
+    return tmpDir('a2t-emit-');
 }
 
 test('emitterFor selects the emitter by language', () => {

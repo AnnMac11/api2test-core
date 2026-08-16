@@ -7,13 +7,13 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateTestPython } from '../src/services/generateTestPython';
 import { generateRequestClassPython } from '../src/services/generateRequestClassPython';
 import { TestGenerationRequest } from '../src/services/TestGenerationService';
+import { tmpDir } from './tmp';
 
 function hasPython(): boolean {
   try { execFileSync('python', ['--version'], { stdio: 'pipe' }); return true; } catch { return false; }
@@ -21,7 +21,7 @@ function hasPython(): boolean {
 
 function assertPyCompiles(code: string): void {
   if (!hasPython()) { return; }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pyt-'));
+  const dir = tmpDir('a2t-pyt-');
   const file = path.join(dir, 'test_generated.py');
   fs.writeFileSync(file, code);
   try {
@@ -112,7 +112,7 @@ test('runtime: the generated test runs end-to-end against stub libraries + the R
     className: 'PetStorePets', endpoint: '/x', method: 'POST', application: 'PetStore',
     fieldConfigurations: [{ name: 'name', type: 'string', required: true, dataMethod: 'CompanyName', location: 'body' }],
   })!;
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pyt-'));
+  const root = tmpDir('a2t-pyt-');
   const mk = (rel: string, contents: string) => {
     const full = path.join(root, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });

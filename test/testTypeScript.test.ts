@@ -7,13 +7,13 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateTestTypeScript } from '../src/services/generateTestTypeScript';
 import { generateRequestClassTypeScript } from '../src/services/generateRequestClassTypeScript';
 import { TestGenerationRequest } from '../src/services/TestGenerationService';
+import { tmpDir } from './tmp';
 
 /**
  * Lay the generated test into Tests/<App>/ alongside stub Libraries/ and the REAL TS-C4 request class in
@@ -21,7 +21,7 @@ import { TestGenerationRequest } from '../src/services/TestGenerationService';
  * `.toFormBody()` calls are checked against what the class emitter actually produces — no stub masking.
  */
 function assertCompiles(code: string, app: string, bodyClass?: string, opts: { form?: boolean } = {}): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-tsc-'));
+  const dir = tmpDir('a2t-tsc-');
   const seg = app.replace(/[^A-Za-z0-9]/g, '');
   const mk = (rel: string, contents: string) => {
     const full = path.join(dir, rel);

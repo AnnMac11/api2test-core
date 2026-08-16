@@ -10,7 +10,6 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -19,6 +18,7 @@ import { generateDataLibraryPython } from '../src/services/generateDataLibraryPy
 import { generateApiMethodsPython } from '../src/services/generateApiMethodsPython';
 import { pySymbol } from '../src/services/pyNaming';
 import { parseApiCalls } from '../src/services/TestRunnerService';
+import { tmpDir } from './tmp';
 
 function hasPython(): boolean {
   try {
@@ -31,7 +31,7 @@ function hasPython(): boolean {
 
 /** Byte-compile one Python source with the stdlib (syntax check, imports not executed). */
 function assertPyCompiles(code: string, fileName: string): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-py-'));
+  const dir = tmpDir('a2t-py-');
   const file = path.join(dir, fileName);
   fs.writeFileSync(file, code);
   try {
@@ -89,7 +89,7 @@ test('the Python API Method Library seed emits an api_methods.py that is valid P
 test('E2E-CAP-1 (Python, runtime): extract_field_async converts store-as types and walks array paths; Reporter marker parses', { skip: !hasPython() }, () => {
   const methods = getDefaultApiMethodLibrary('python').filter((m: any) => m.code && m.code.trim());
   const code = generateApiMethodsPython(methods as any);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-py-'));
+  const dir = tmpDir('a2t-py-');
   fs.writeFileSync(path.join(dir, 'api_methods.py'), code);
   // Stub `requests` so the module imports without pip dependencies, then exercise the real seed code.
   fs.writeFileSync(path.join(dir, 'probe.py'), `

@@ -7,13 +7,13 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateRequestClassPython } from '../src/services/generateRequestClassPython';
 import { ClassGenerationRequest } from '../src/models/ClassGenerationDto';
 import { PARAMETER } from '../src/services/DataDictionaryService';
+import { tmpDir } from './tmp';
 
 function hasPython(): boolean {
   try { execFileSync('python', ['--version'], { stdio: 'pipe' }); return true; } catch { return false; }
@@ -21,7 +21,7 @@ function hasPython(): boolean {
 
 /** Byte-compile the class inside the real Classes/<App>/ layout. */
 function assertPyCompiles(code: string, app: string, className: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pyc-'));
+  const dir = tmpDir('a2t-pyc-');
   const seg = app.replace(/[^A-Za-z0-9]/g, '');
   const file = path.join(dir, 'Classes', seg, `${className}.py`);
   fs.mkdirSync(path.dirname(file), { recursive: true });

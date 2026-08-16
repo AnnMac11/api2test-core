@@ -6,12 +6,12 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generateApiMethodsTypeScript } from '../src/services/generateApiMethodsTypeScript';
 import { parseApiCalls } from '../src/services/TestRunnerService';
+import { tmpDir } from './tmp';
 
 test('emits the ApiMethods class, fetch helpers and the Reporter marker', () => {
   const code = generateApiMethodsTypeScript([], { includeApiClient: true });
@@ -34,7 +34,7 @@ test('the Reporter marker round-trips through the runner parser (parseApiCalls)'
 
 test('the emitted apiMethods.ts type-checks under strict TypeScript', () => {
   const code = generateApiMethodsTypeScript([], { includeApiClient: true });
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-tsc-'));
+  const dir = tmpDir('a2t-tsc-');
   fs.writeFileSync(path.join(dir, 'apiMethods.ts'), code);
   // Isolated tsconfig: DOM lib supplies fetch/Response; `types: []` keeps the repo's @types/node out
   // (it pulls an unrelated undici-types resolution error under these flags). Mirrors runTsc's per-dir run.
