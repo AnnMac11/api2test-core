@@ -1015,6 +1015,45 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
 
+- [x] **PYT-ROOT — pytest ran code from ABOVE the sandbox it was handed. DONE 2026-08-16 (`develop`).**
+  Found while root-causing a red `pytestRunner` test that only failed in the full suite: the run
+  reported zero tests, and the JUnit XML held `FileNotFoundError ... MSBuildTemp*` — a file no test of
+  ours ever created. Cause: `runPytest` passed only the target directory, so pytest inferred its
+  rootdir by walking UP the filesystem, scanning the parent (here the OS temp root, where a concurrent
+  `dotnet test` was creating and deleting MSBuild scratch files) and **executing any `conftest.py` it
+  found there**. The second consequence is the serious one: a stray conftest above a user's sandbox
+  runs arbitrary Python inside their test run. Fix: `--rootdir=<projectDir>` — the runner never needs
+  anything above the directory it was given. Bug-first: the new
+  `test/pytestRunner.test.ts` "an ancestor conftest.py is never loaded" test plants a throwing
+  conftest in the parent; RED `RuntimeError: ancestor conftest executed` → GREEN. Both editions get
+  this with the next bump (VS Code Test Sets/Execute already route Python through `compileAndRunTests`;
+  Desktop when it adopts TS-C4).
+
+- [x] **TMP-CLEAN — test temp directories now delete themselves. DONE 2026-08-16 (`develop`).** User:
+  *"why are there hundreds of leftover temp dirs?"* — there were 17,532 orphaned `a2t-*` directories
+  (~430 MB) in `%TEMP%`, from this repo, the extension and Desktop. Every filesystem suite
+  `mkdtempSync`'d into the temp root and left the directory behind; only `compileAndRun.test.ts`
+  cleaned up. Beyond disk, this is what made PYT-ROOT bite: pytest's ancestor scan costs time
+  proportional to the parent's size (measured: 0.27s collect with a clean parent, 0.68s with 6,000
+  siblings, 0.00s with `--rootdir`). New `test/tmp.ts` exports `tmpDir(prefix)` — `mkdtempSync` plus
+  registration for removal on `process.on('exit')`, which a per-test `finally` cannot match because a
+  throwing test skips it. All 33 call sites across 24 files converted; verified by counting `%TEMP%`
+  after a full run: 0 left, 354 passing. The extension has the mirror helper at `src/test/tmp.ts`;
+  Desktop still leaks (`api2test-reg-*`, `api2test-api-*`) — see its TASKS.md.
+
+- [x] **RUN-LANG + RUN-FW — language-routed compile-and-run + framework-per-language. DONE 2026-08-13
+  (`develop`, uncommitted).** Lifted from the VS Code extension (user: "run tests based on the
+  install language" / "are you duplicating code?"): each edition was branching on the language
+  itself — or, in Test Sets' case, not branching at all and running `dotnet test` on a python
+  sandbox. `compileAndRunTests(language, projectDir, {timeoutMs?, filter?})` in `TestRunnerService`
+  is now the ONE place that knows the toolchain pair per language (compileall+pytest / tsc+Vitest /
+  dotnet build+test) and each runner's filter syntax (callers pass the bare artifact name). And
+  `frameworksFor(language)` in `models/E2EDto.ts` owns the framework choice (csharp →
+  MSTest/xUnit/NUnit, typescript → Vitest, python → pytest; first = default); `TestFramework`
+  widened with 'Vitest' | 'pytest'. Bug-first: `test/compileAndRun.test.ts` (RED → GREEN, 352
+  passing). Consumed by VS Code (Execute + Test Sets + E2E dialog, 0.2.56 branch
+  `sp1-1-deploy-via-core`); Desktop adoption is TS-C4.
+
 - [x] **IMPORT-HANG — RESP-SCHEMA made a real spec import never finish, and say nothing while it
   didn't. DONE 2026-08-10 (`develop`, uncommitted).** Reported the same day by the user, on the very
   next import: *"I tried to import stripe api via url, but it appears to be stuck. there is no error?"*
