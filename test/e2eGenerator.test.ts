@@ -56,7 +56,14 @@ test('class-first row (no send-method) emits each class call and binds URL place
     { className: 'PetStorePostPet', endpoint: '/pet (POST)', method: 'POST', contentType: 'application/json' },
     { className: 'PetStoreDeletePetByPetId', endpoint: '/pet/{petId} (DELETE)', method: 'DELETE' },
   ];
-  const petCtx: E2EGenContext = { methods, classes: petClasses };
+  const petCtx: E2EGenContext = {
+    // The curated Pet Store header methods, under their NAME-1 names.
+    methods: [...methods,
+      { methodName: 'PetStoreBaseUrl', parameters: '', returnType: 'string' },
+      { methodName: 'PetStoreApiKey', parameters: '', returnType: 'Task<string>' },
+    ],
+    classes: petClasses,
+  };
   const row: E2ETestCaseRow = {
     id: 'r', name: 'Create then delete pet', items: [
       { type: 'Class', ref: 'PetStorePostPet' },
@@ -64,7 +71,22 @@ test('class-first row (no send-method) emits each class call and binds URL place
       { type: 'Class', ref: 'PetStoreDeletePetByPetId', args: { petId: { value: 'petId', isVariable: true } } },
     ],
   };
-  const code = generateTestForRow(row, { ...page, application: 'Pet Store' }, petCtx);
+  // A case saved before NAME-1 stores the retired names in its HEADER too, not only in its steps — the
+  // header is where the base path and token come from, so it is saved from the same stale library.
+  const legacyHeader = {
+    ...page, application: 'Pet Store',
+    basePath: 'petstoreTestBasePath', token: 'petstoreTestToken',
+  };
+  const code = generateTestForRow(row, legacyHeader, petCtx);
+
+  // The header's two methods translate exactly as a step's ref does. The base path did NOT: it was
+  // interpolated raw while the token beside it went through canonicalMethodName, so an old case emitted
+  // `var baseUrl = petstoreTestBasePath();` — a method the seeded library no longer has, and the whole
+  // file then failed to compile. Every later assertion here passes on that broken output, which is why
+  // this is asserted on the header and not inferred from the rest.
+  assert.match(code, /var baseUrl = PetStoreBaseUrl\(\);/);
+  assert.match(code, /var token = await PetStoreApiKey\(\);/);
+  assert.equal(/petstoreTest/.test(code), false, 'no retired header method reaches the test file');
 
   // Row 1: the POST class emits its own request + call (no separate send method needed).
   assert.match(code, /var response1 = await PostJsonAsync\(token, url1, request1\.ToJson\(\)\);/);

@@ -273,6 +273,9 @@ function methodStep(item: E2ECaseItem, n: number, f: TestFramework, ctx: E2EGenC
 /** Generate a framework-correct, compilable C# test file from one ordered E2E chain. */
 export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EGenContext): string {
   const f = page.framework;
+  // Both header methods are refs into the library, so both need the pre-rename translation — the token
+  // had it and the base path didn't, which emitted a call to a method NAME-1 had retired.
+  const baseRef = canonicalMethodName(page.basePath);
   const tokenRef = canonicalMethodName(page.token);
   const tokenObj = ctx.methods.find((m: any) => m.methodName === tokenRef);
   const tokenLine = isAsync(tokenObj?.returnType)
@@ -337,7 +340,7 @@ export function generateTestForRow(row: E2ETestCaseRow, page: E2EPage, ctx: E2EG
     `    ${attrFor(f)}`,
     `    public async Task ${methodName(row.name)}()`,
     `    {`,
-    `        var baseUrl = ${page.basePath}();`,
+    `        var baseUrl = ${baseRef}();`,
     tokenLine,
     ``,
     ...steps,
