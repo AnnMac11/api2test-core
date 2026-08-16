@@ -132,5 +132,9 @@ export { buildExecutionReportHtml } from './services/runReport';
 export { parseTrx, runDotnetTest, runDotnetBuild, methodNameOf, outcomeToStatus, parseApiCalls, extractBuildErrors } from './services/TestRunnerService';
 export { parseVitestJson, parseTscErrors, runVitest, runTsc } from './services/TestRunnerService';
 export { parseJUnitXml, runPytest, runPyCompile } from './services/TestRunnerService';
-export type { RawTestResult, BuildResult, VitestRun, PytestRun } from './services/TestRunnerService';
+export { compileAndRunTests } from './services/TestRunnerService';
+export type { RawTestResult, BuildResult, VitestRun, PytestRun, CompileRun } from './services/TestRunnerService';
+// RUN-FW: framework choice per language (the first is the default) — used by the E2E dialogs.
+export { frameworksFor } from './models/E2EDto';
+export type { TestFramework } from './models/E2EDto';
 // ApiCall + the Execution/ExecResult result shapes (EXEC-1) come from ./models (single-sourced).

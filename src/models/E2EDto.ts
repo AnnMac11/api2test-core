@@ -2,7 +2,23 @@
  * E2E test-case model — the explicit, user-authored chain that the E2E generator turns into a
  * framework-correct C# test. Shared by every edition (enterprise, VS, Jira) via the core.
  */
-export type TestFramework = 'MSTest' | 'xUnit' | 'NUnit';
+import type { TargetLanguage } from '../adapters/CodeEmitter';
+
+export type TestFramework = 'MSTest' | 'xUnit' | 'NUnit' | 'Vitest' | 'pytest';
+
+/**
+ * The frameworks a language can target — the FIRST is the default (RUN-FW). C# genuinely has a
+ * choice (the generator emits framework-specific attributes/asserts); TypeScript and Python have
+ * one runner each — Vitest and pytest are what the emitters generate for and the runner invokes.
+ * Single-sourced here so no edition offers MSTest/xUnit/NUnit on a python install again.
+ */
+export function frameworksFor(language: TargetLanguage): TestFramework[] {
+  switch (language) {
+    case 'typescript': return ['Vitest'];
+    case 'python': return ['pytest'];
+    default: return ['MSTest', 'xUnit', 'NUnit'];
+  }
+}
 
 export type E2ECaseType = 'Method' | 'Class';
 

@@ -13,6 +13,8 @@ import * as path from 'path';
 import type { ApiCall } from '../models/execution';
 export type { ApiCall };
 
+import type { TargetLanguage } from '../adapters/CodeEmitter';
+
 export interface RawTestResult {
   /** Bare method name (last segment of the fully-qualified test name). */
   method: string;
@@ -434,12 +436,18 @@ export interface PytestRun {
  * Run pytest in a Python sandbox, emit a JUnit XML report, and parse it. `junit_logging=out-err`
  * puts each test's stdout in its `<system-out>`, which is where the Reporter markers live.
  * Non-zero exit on test failures is expected — the report is still produced and parsed.
+ *
+ * PYT-ROOT: `--rootdir` pins pytest to the project. Without it pytest infers a rootdir by walking
+ * UP from the target — scanning that ancestor directory and **executing any conftest.py in it**.
+ * The sandbox lives under the user's home/temp tree, so a stray conftest above it would run
+ * arbitrary Python inside their test run, and the ancestor scan costs time proportional to that
+ * directory's size. The runner never needs anything above the directory it was handed.
  */
 export function runPytest(projectDir: string, opts: { timeoutMs?: number; filter?: string } = {}): Promise<PytestRun> {
   return new Promise((resolve, reject) => {
     const outFile = path.join(projectDir, '.api2test-results.xml');
     try { fs.rmSync(outFile, { force: true }); } catch { /* ignore */ }
-    const args = ['-m', 'pytest', projectDir, '-q', `--junit-xml=${outFile}`, '-o', 'junit_logging=out-err'];
+    const args = ['-m', 'pytest', projectDir, '-q', `--rootdir=${projectDir}`, `--junit-xml=${outFile}`, '-o', 'junit_logging=out-err'];
     if (opts.filter) args.push('-k', opts.filter);
     execFile('python', args, { timeout: opts.timeoutMs ?? 300_000, maxBuffer: 32 * 1024 * 1024, env: process.env }, (_err, stdout, stderr) => {
       if (!fs.existsSync(outFile)) {
@@ -451,6 +459,47 @@ export function runPytest(projectDir: string, opts: { timeoutMs?: number; filter
       } catch (e) { reject(e); }
     });
   });
+}
+
+// ── RUN-LANG: language-routed compile-and-run (one entry point for every edition) ───────────────────
+
+/** What {@link compileAndRunTests} learned: the build outcome, and the tests that ran (if it built). */
+export interface CompileRun {
+  build: BuildResult;
+  /** Per-test results — empty when the build failed (nothing ran). */
+  results: RawTestResult[];
+}
+
+/**
+ * Compile the project, then run its tests — routed by the install language (RUN-LANG). This is the
+ * ONE place that knows which toolchain a language uses (`compileall`+pytest / `tsc`+Vitest /
+ * `dotnet build`+`dotnet test`) and each runner's filter syntax. Callers pass the bare artifact
+ * name as `filter`; the dotnet path wraps it in `FullyQualifiedName~`, pytest gets `-k`, Vitest
+ * `-t`. Before this existed, each caller branched itself — and the one that didn't ran
+ * `dotnet test` on a python sandbox.
+ */
+export async function compileAndRunTests(
+  language: TargetLanguage,
+  projectDir: string,
+  opts: { timeoutMs?: number; filter?: string } = {},
+): Promise<CompileRun> {
+  if (language === 'python') {
+    const build = await runPyCompile(projectDir, { timeoutMs: opts.timeoutMs });
+    if (!build.ok) { return { build, results: [] }; }
+    return { build, results: (await runPytest(projectDir, opts)).results };
+  }
+  if (language === 'typescript') {
+    const build = await runTsc(projectDir, { timeoutMs: opts.timeoutMs });
+    if (!build.ok) { return { build, results: [] }; }
+    return { build, results: (await runVitest(projectDir, opts)).results };
+  }
+  const build = await runDotnetBuild(projectDir, { timeoutMs: opts.timeoutMs });
+  if (!build.ok) { return { build, results: [] }; }
+  const results = await runDotnetTest(projectDir, {
+    timeoutMs: opts.timeoutMs,
+    filter: opts.filter ? `FullyQualifiedName~${opts.filter}` : undefined,
+  });
+  return { build, results };
 }
 
 /** A test case's generated C# method name (mirrors the E2E generator's methodName()). */

@@ -8,11 +8,11 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { parseJUnitXml, runPyCompile, runPytest, outcomeToStatus } from '../src/services/TestRunnerService';
+import { tmpDir } from './tmp';
 
 function hasPython(): boolean {
   try { execFileSync('python', ['--version'], { stdio: 'pipe' }); return true; } catch { return false; }
@@ -72,13 +72,13 @@ test('parseJUnitXml: malformed input yields no results, not a throw', () => {
 });
 
 test('runPyCompile: a valid unit passes, a syntax error fails with the error surfaced', { skip: !hasPython() }, async () => {
-  const good = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pyb-'));
+  const good = tmpDir('a2t-pyb-');
   fs.mkdirSync(path.join(good, 'Libraries'));
   fs.writeFileSync(path.join(good, 'Libraries', 'api_methods.py'), 'def get_async(token, url):\n    return None\n');
   const ok = await runPyCompile(good);
   assert.equal(ok.ok, true, `expected clean compile, got: ${ok.errors.join('; ')}`);
 
-  const bad = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pyb-'));
+  const bad = tmpDir('a2t-pyb-');
   fs.writeFileSync(path.join(bad, 'broken.py'), 'def broken(:\n    pass\n');
   const res = await runPyCompile(bad);
   assert.equal(res.ok, false);
@@ -86,8 +86,35 @@ test('runPyCompile: a valid unit passes, a syntax error fails with the error sur
   assert.match(res.errors.join('\n') + res.raw, /SyntaxError|broken\.py/);
 });
 
+/**
+ * PYT-ROOT — pytest must be confined to the project it was handed.
+ *
+ * Given only a target directory, pytest infers its rootdir by walking UP the filesystem: it scans
+ * the ancestor directory and **executes any conftest.py it finds there**. Two consequences, both
+ * real: a stray conftest above the sandbox runs arbitrary Python inside the user's test run (or, as
+ * here, kills it with an ImportError that names a file they never wrote); and the ancestor scan
+ * costs time proportional to that directory's size, which is how a full-suite run collided with
+ * MSBuild's transient temp files and reported zero tests.
+ */
+test('runPytest: an ancestor conftest.py is never loaded — pytest is confined to the project', { skip: !hasPytest() && 'pytest not installed on this machine' }, async () => {
+  const parent = tmpDir('a2t-pyroot-');
+  try {
+    const project = path.join(parent, 'sandbox');
+    fs.mkdirSync(project);
+    fs.writeFileSync(path.join(project, 'test_sample.py'), 'def test_ok():\n    assert True\n');
+    // ABOVE the project — nothing the sandbox owns, and nothing it should ever run.
+    fs.writeFileSync(path.join(parent, 'conftest.py'), 'raise RuntimeError("ancestor conftest executed")\n');
+
+    const run = await runPytest(project);
+    assert.equal(run.results.length, 1, 'the project\'s own test ran');
+    assert.equal(outcomeToStatus(run.results[0].outcome), 'pass');
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('runPytest: live run parses results and attributes calls per test', { skip: !hasPytest() && 'pytest not installed on this machine' }, async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-pyr-'));
+  const dir = tmpDir('a2t-pyr-');
   fs.writeFileSync(path.join(dir, 'test_sample.py'), `
 def test_passes():
     print('##A2T_CALL## {"method":"GET","url":"http://x","status":200}')
