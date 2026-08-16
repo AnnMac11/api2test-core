@@ -185,3 +185,12 @@ print("PY_PROBE_OK")
   }
   assert.match(stdout, /PY_PROBE_OK/);
 });
+
+// A case saved before NAME-1 stores the retired names in its HEADER as well as its steps. The token was
+// translated and the base path was not, so the emitted module called a method the library no longer has.
+test('a pre-NAME-1 header is translated too — the same case, saved twice, emits the same file', () => {
+  const legacy: E2EPage = { ...PAGE, basePath: 'petstoreTestBasePath', token: 'petstoreTestToken' };
+  const code = generateE2ETestPython(ROW, legacy, CTX);
+  assert.equal(code, generateE2ETestPython(ROW, PAGE, CTX));
+  assert.equal(/petstore_test|petstoreTest/i.test(code), false, 'no retired header method reaches the generated file');
+});

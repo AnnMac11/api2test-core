@@ -241,6 +241,8 @@ export function generateE2ETestTypeScript(row: E2ETestCaseRow, page: E2EPage, ct
     ...[...classRefs].map(c => `import { ${c} } from '${rel(`${classesDir(page.application)}/${c}`)}';`),
   ];
 
+  // Both header methods are library refs, so both take the pre-rename translation (see the C# emitter).
+  const baseRef = canonicalMethodName(page.basePath);
   const tokenRef = canonicalMethodName(page.token);
   const tokenObj = ctx.methods.find((m: any) => m.methodName === tokenRef);
   const tokenCall = `ApiMethods.${tsSymbol(tokenRef)}()`;
@@ -251,7 +253,7 @@ ${imports.join('\n')}
 
 describe('${e2eMethodNameTs(row.name)}', () => {
   it('${(row.name || 'runs the chain').replace(/'/g, "\\'")}', async () => {
-    const baseUrl = ApiMethods.${tsSymbol(page.basePath)}();
+    const baseUrl = ApiMethods.${tsSymbol(baseRef)}();
 ${tokenLine}
 
 ${steps.join('\n')}

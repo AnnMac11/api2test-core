@@ -135,3 +135,14 @@ test('a pinned field whose name is not a valid identifier is quoted, as the clas
     PetstorePostPet: "export class PetstorePostPet { 'pet-id': number = 0; name: string = ''; toJson(): string { return ''; } }\n",
   });
 });
+
+// A case saved before NAME-1 stores the retired names in its HEADER as well as its steps. The token was
+// translated and the base path was not, so the emitted file called a method the library no longer has.
+test('a pre-NAME-1 header is translated too — the same case, saved twice, emits the same file', () => {
+  const legacy: E2EPage = { ...PAGE, basePath: 'petstoreTestBasePath', token: 'petstoreTestToken' };
+  const code = generateE2ETestTypeScript(ROW, legacy, CTX);
+  // Asserted against the current-name output rather than a literal, so this cannot rot the way the
+  // literal it is replacing did.
+  assert.equal(code, generateE2ETestTypeScript(ROW, PAGE, CTX));
+  assert.equal(/petstoreTest/i.test(code), false, 'no retired header method reaches the generated file');
+});

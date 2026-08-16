@@ -1041,6 +1041,27 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
 
+- [x] **HDR-CANON — a test case saved before NAME-1 generated code calling a method that no longer
+  exists. DONE 2026-08-16 (`develop` → `main`).** Found by the Desktop E2E suite the first time it ran
+  after the RUN-LANG/RUN-FW merge (two red journeys, `api2test` run 31958920511).
+  - **The gap.** A case's header holds two library refs — base path and token — and `generateTestForRow`
+    translated only one: `canonicalMethodName(page.token)` on line 276, `${page.basePath}` interpolated
+    raw on line 340. Both emitters lifted from it (Python, TypeScript) had copied the same asymmetry.
+    An old case therefore emitted `var baseUrl = petstoreTestBasePath();` — retired by NAME-1 in favour
+    of `PetStoreBaseUrl` — and the whole generated file failed to compile.
+  - **Why nothing caught it.** `e2eGenerator.test.ts` had a legacy-name case, but it only ever put the
+    retired names in the case's STEPS; the header came from a fixture written with current names. The
+    Desktop spec that did exercise it asserted `toContain('petstoreTestBasePath')` and so was **green
+    because of the bug** — it pinned the broken output as expected.
+  - **Fixed.** `baseRef = canonicalMethodName(page.basePath)` in all three emitters.
+  - **Tests.** The C# legacy case now carries a legacy header; TypeScript and Python each gained "the
+    same case, saved twice, emits the same file", asserted against the current-name output rather than a
+    literal, so it cannot rot the way the literal did. RED 3/20 → GREEN 20/20; full suite 356/356.
+  - **Consumers.** Desktop's `tests/ui-e2e/steps/api.ts` PETSTORE fixture still names the retired
+    methods — it must move to `PetStoreBaseUrl` / `PetStoreApiKey`, and the assertion that pinned the bug
+    has to change with it. VS Code not yet checked: same emitters, so any stored case predating NAME-1
+    is affected there too.
+
 - [x] **PYT-ROOT — pytest ran code from ABOVE the sandbox it was handed. DONE 2026-08-16 (`develop`).**
   Found while root-causing a red `pytestRunner` test that only failed in the full suite: the run
   reported zero tests, and the JUnit XML held `FileNotFoundError ... MSBuildTemp*` — a file no test of
