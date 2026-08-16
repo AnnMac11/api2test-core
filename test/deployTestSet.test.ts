@@ -1,13 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { execFileSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import { deployTestSet } from '../src/services/deployTestSet';
 import type { DeployDestinationDto } from '../src/services/DeployDestinationService';
 import { CSharpEmitter } from '../src/adapters/CSharpEmitter';
 import type { StorageProvider } from '../src/adapters/StorageProvider';
+import { tmpDir } from './tmp';
 
 // Real end-to-end: a real local BARE git repo is the remote; deployTestSet clones it, writes the
 // unit, commits and pushes with real git. No mocks past the step under test.
@@ -15,7 +13,7 @@ import type { StorageProvider } from '../src/adapters/StorageProvider';
 const emitter = new CSharpEmitter(null as unknown as StorageProvider);
 
 function tmp(name: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `a2t-${name}-`));
+  return tmpDir(`a2t-${name}-`);
 }
 
 function bareRemote(): string {

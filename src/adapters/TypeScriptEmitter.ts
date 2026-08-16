@@ -1,5 +1,6 @@
 import { CodeEmitter, TargetLanguage } from './CodeEmitter';
 import { CSharpEmitter } from './CSharpEmitter';
+import { PythonEmitter } from './PythonEmitter';
 import { StorageProvider } from './StorageProvider';
 import { ClassGenerationRequest } from '../models/ClassGenerationDto';
 import { TestGenerationRequest } from '../services/TestGenerationService';
@@ -56,6 +57,7 @@ export function emitterFor(language: TargetLanguage, storage: StorageProvider): 
     switch (language) {
         case 'typescript': return new TypeScriptEmitter(storage);
         case 'csharp':     return new CSharpEmitter(storage);
+        case 'python':     return new PythonEmitter(storage);
         default:
             throw new Error(`No CodeEmitter for language '${language}'.`);
     }

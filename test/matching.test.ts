@@ -1,15 +1,13 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { DataDictionaryService, NOT_ASSIGNED } from '../src/services/DataDictionaryService';
 import { FileStorageService } from '../src/services/FileStorageService';
 import { DataDictionaryField } from '../src/models/DataDictionaryDto';
 import { DataMethodDto } from '../src/models/DataMethodDto';
+import { tmpDir } from './tmp';
 
 function svc(): DataDictionaryService {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-match-'));
+    const dir = tmpDir('a2t-match-');
     return new DataDictionaryService(new FileStorageService(dir));
 }
 

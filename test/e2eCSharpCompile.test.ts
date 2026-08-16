@@ -11,7 +11,6 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -19,6 +18,7 @@ import { getDefaultApiMethodLibrary } from '../src/data/defaultLibraries';
 import { generateApiMethodsCSharp } from '../src/services/generateApiMethodsCSharp';
 import { generateTestForRow } from '../src/services/E2ETestGenerationService';
 import { E2EPage, E2ETestCaseRow, E2EGenContext } from '../src/models/E2EDto';
+import { tmpDir } from './tmp';
 
 function hasDotnet(): boolean {
   try {
@@ -46,7 +46,7 @@ const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
 
 /** Emit the seed library + `code` into a throwaway project and build it. Fails with the compiler output. */
 function assertCompiles(code: string, stubClasses: string): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-cs-'));
+  const dir = tmpDir('a2t-cs-');
   const methods = getDefaultApiMethodLibrary('csharp').filter((m: any) => m.code && m.code.trim());
   const write = (rel: string, contents: string) => {
     const full = path.join(dir, rel);

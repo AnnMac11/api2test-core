@@ -1,16 +1,15 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { FileStorageService } from '../src/services/FileStorageService';
 import { CSharpEmitter } from '../src/adapters/CSharpEmitter';
 import { TypeScriptEmitter, emitterFor } from '../src/adapters/TypeScriptEmitter';
+import { PythonEmitter } from '../src/adapters/PythonEmitter';
 import { ClassGenerationRequest } from '../src/models/ClassGenerationDto';
 import { PARAMETER } from '../src/services/DataDictionaryService';
+import { tmpDir } from './tmp';
 
 function emitter(): CSharpEmitter {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-emit-'));
+    const dir = tmpDir('a2t-emit-');
     return new CSharpEmitter(new FileStorageService(dir));
 }
 
@@ -81,7 +80,7 @@ test('PARAMETER field emits a settable placeholder, not a DataGenerator call', (
 // ── TS-C1: language seam ──────────────────────────────────────────────────────────────────────
 
 function storageDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-emit-'));
+    return tmpDir('a2t-emit-');
 }
 
 test('emitterFor selects the emitter by language', () => {
@@ -109,6 +108,28 @@ test('every TypeScriptEmitter method is implemented (none throws a not-implement
     // delegation or an empty return would pass a doesNotThrow but fail these).
     assert.match(e.emitApiMethods([]), /export class ApiMethods/, 'emitApiMethods delegates to the ApiMethods TS generator');
     assert.match(e.emitDataLibrary([]), /export class DataGenerator/, 'emitDataLibrary delegates to the DataGenerator TS generator');
+});
+
+// ── PY-GEN-1: the Python emitter joins the seam ───────────────────────────────────────────────
+
+test('emitterFor selects the Python emitter', () => {
+    const storage = new FileStorageService(storageDir());
+    assert.equal(emitterFor('python', storage).language, 'python');
+});
+
+test('PythonEmitter reports py extension and the snake_case deploy file names', () => {
+    const e = new PythonEmitter(new FileStorageService(storageDir()));
+    assert.equal(e.language, 'python');
+    assert.equal(e.fileExtension, 'py');
+    assert.deepEqual(e.libraryFileNames, { apiMethods: 'api_methods.py', dataLibrary: 'data_generator.py' });
+    assert.equal(e.testFileName('StripeCustomers'), 'test_StripeCustomers.py', 'pytest discovers test_*.py');
+    assert.equal(e.classFileName('StripeCustomers'), 'StripeCustomers.py');
+});
+
+test('every PythonEmitter method is implemented and delegates to the right Py generator', () => {
+    const e = new PythonEmitter(new FileStorageService(storageDir()));
+    assert.match(e.emitApiMethods([]), /##A2T_CALL##/, 'emitApiMethods delegates to the api_methods generator (Reporter included)');
+    assert.match(e.emitDataLibrary([]), /class DataGenerator:/, 'emitDataLibrary delegates to the DataGenerator Py generator');
 });
 
 test('#52: an integer field generates `public int`, a fractional number `public decimal`', () => {

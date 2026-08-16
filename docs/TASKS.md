@@ -11,6 +11,32 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [ ] **RUN-MAP — a test result can only be mapped back to its test case in C#. Raised 2026-08-16 while
+  adopting RUN-LANG in the Desktop app (`api2test` TS-C4).** Not yet reproduced against a real python /
+  TypeScript run — this is a read of the emitters against the result parsers, so **confirm it first**.
+  - **The gap.** Core owns both ends — it emits the test and it parses the runner's output — but the only
+    name that joins them is `methodNameOf(caseName)`, whose own doc-comment says it is "a test case's
+    generated **C#** method name". The other two emitters don't name the test after the case at all:
+    - `generateTestPython.ts:123` → `def test_${(request.method||'call').toLowerCase()}_returns_success()`
+    - `generateTestTypeScript.ts:138` → `it('${request.method} returns success')` inside `describe('${cls}')`
+    So on python/TypeScript, `parseJUnitXml`/`parseVitestJson` return a `method` that can never equal
+    `methodNameOf('Create a pet')` (`CreateAPet`). Every case comes back as a **false skip** — "Deployed X
+    but it didn't run" — even when it passed. Worse, the python/TS names are derived from the HTTP method,
+    so two cases in one project can share a name outright.
+  - **Why it must be fixed here, not in the consumers.** Both consumers map by `methodNameOf` (Desktop
+    `server/runSuite.ts`, VS Code `services/executeTestCase.ts`); neither can do better without
+    duplicating core's emitter naming. The *filter* is already right — `safeArtifactName` is the artifact
+    name core gives the file and the class in all three languages, so `FullyQualifiedName~`, pytest `-k`
+    (matches the `test_<artifact>.py` module) and Vitest `-t` all hit. It's only the **result → case**
+    join that is C#-only.
+  - **Shape of the fix (to agree).** Either name the emitted test after the case in python/TS as C# does,
+    or carry the artifact name on `RawTestResult` so consumers join on it instead of the method name.
+    The first is the better fix — it also removes the same-name collision — but it changes generated code.
+  - **Bug-first.** The test that should have caught this is a core round-trip: emit a case for each
+    language, parse a runner output for it, assert the case is found. No such test exists; that's the gap.
+  - **Consumers.** Re-review tasks filed in `../api2test/docs/TASKS.md` (RUN-MAP-D) and
+    `../Api2TestVS/docs/TASKS.md` (RUN-MAP-V).
+
 - [x] **SEND-1 / NAME-1 — a GET step generated code that could not compile, and the method names did not
   say what they do. DONE 2026-08-08 (branch `develop`, uncommitted).** Found by the user: generated test
   `test5` failed with
@@ -398,7 +424,10 @@ against core. Bug-first per task; coordinate version bumps.
 - [x] **SBX-1 — managed local sandbox. DONE 2026-07-17 (branch `develop`).** New
   `services/sandboxProject.ts`: `ensureSandbox(language, dir)` → `{ ok, reason?, projectPath?,
   tfm?, depsReady? }`, language-keyed off `SANDBOX_SCAFFOLDERS` (csharp + typescript; python →
-  honest not-yet pointing at PY-1). C# = Desktop's scaffold lifted (tfm from core `detectDotnet`,
+  honest not-yet — **superseded: python scaffolder added 2026-08-12** with SP-PY: `requirements.txt`
+  pytest/requests/faker, `depsReady` via an import probe — pip installs per-user, not into the dir, so
+  install stays an explicit user step. Bug-first in `sandboxProject.test.ts`, RED 5 → GREEN 12,
+  suite 350/351). C# = Desktop's scaffold lifted (tfm from core `detectDotnet`,
   pinned MSTest/Bogus csproj, write-only-on-change so no needless restores). TS = the NF-2
   scaffold created here: `package.json` (private; typescript/vitest/@faker-js/faker devDeps) +
   `tsconfig.json` pinned to the emit layer's proven compile settings (strict/ES2022/bundler/
@@ -460,8 +489,16 @@ against core. Bug-first per task; coordinate version bumps.
   no-orphaned-category — both shown failing on the real drifted seed, green after the fix.
   `test/methodScope.test.ts` (5). Build clean, 193/193 green. VS Code SP3-1 + Desktop
   (drop `constants/values.ts` taxonomy + the TestCasesPage local rule) are thin ports.
-- [ ] **PY-1 — Python emitters + pytest runner** (VS Code NF-1). Reuses the TS language seam; do
-  after the TS extension path proves out.
+- [x] **PY-1 — Python emitters + pytest runner. DONE 2026-08-12 (branch `develop`).** Emitters
+  delivered under PY-GEN-1 (same session). Runner half in `TestRunnerService.ts`, parallel to the
+  dotnet/Vitest paths: **`parseJUnitXml`** (pytest `--junit-xml` → `RawTestResult[]`; JUnit keeps stdout
+  per testcase, so `##A2T_CALL##` markers attribute per test for free — no custom reporter like TS-C2),
+  **`runPyCompile`** (`python -m compileall -q`, stdlib-only so missing `requests`/`faker` can't fail
+  validation) and **`runPytest`** (`python -m pytest -q --junit-xml … -o junit_logging=out-err`, `-k`
+  filter) returning `PytestRun { results, calls }`. `BUILD_VALIDATORS.python` wired in `deployUnit.ts`;
+  all exported from `index.ts`. Bug-first: `test/pytestRunner.test.ts` RED first — and it caught a real
+  bug (`name=` attr regex matched the tail of `classname=`; anchored). Live-pytest test skips when
+  pytest is absent; `runPyCompile` runs against the real interpreter.
 
 ### Class status model (CLS series) — added 2026-07-17
 
@@ -659,7 +696,36 @@ grouping — `groupIntoCalls`, `isSendMethod`, `stepIncomplete`, `friendlyMethod
     input), `e2eTypeScript.test.ts` (incl. `Guid`→`string`). **218/218 green, build clean.** _Remaining:_
     clients (VS Code RB-8/RB-5 multi-row typed OUT UI; Desktop drop `addOutputParam`→`captures[]`), then
     SEL-1 helpers, then Python (PY-GEN-1).
-- [ ] **PY-GEN-1 — Python E2E + API-method generator in core (new, 2026-07-25, user-requested).** Core
+- [x] **PY-GEN-1 — Python E2E + API-method generator in core. DONE 2026-08-12 (branch `develop`).**
+  Full Python emitter suite, mirroring the TS one file-for-file:
+  - **`PythonEmitter`** (`src/adapters/PythonEmitter.ts`, wired in `emitterFor('python')` + the adapters
+    barrel): `py` extension, `api_methods.py`/`data_generator.py` library names, `test_X.py` (pytest
+    discovery) / `X.py` file names. All five emit kinds delegate to pure render functions.
+  - **`generateApiMethodsPython`** — `api_methods.py` as a **module of functions** (matches the seed
+    shape; not a class — that decision supersedes the original `ApiMethods`-class brief), on `requests`,
+    with a `_Reporter` printing the same `##A2T_CALL##` markers `parseApiCalls` extracts (16 KB body cap,
+    never raises). **`generateDataLibraryPython`** — `class DataGenerator` on `Faker`.
+  - **`generateRequestClassPython`** / **`generateTestPython`** / **`generateE2ETestPython`** — request
+    classes (`to_json`/`to_form_body`, PARAMETER placeholders, OVR-CASE via `setattr` for non-identifier
+    JSON keys), single pytest tests (deploy-layout `sys.path` bootstrap + `Libraries`/`Classes` imports,
+    f-string URLs, `urllib.parse.quote` on query args), and E2E chains (captures via 3-arg
+    `extract_field_async`, `str()`-wrapped URL concat, override statements, `assert` validators).
+  - **`pySymbol`** (`src/services/pyNaming.ts`) — PascalCase→snake_case keeping `_async`
+    (`GetAsync`→`get_async`, `ValidateSuccess_200_201Async`→`validate_success_200_201_async`);
+    `mapCaptureType(type, 'python')` → `float`/`bool`/`str` (`number`→`float` per the seed's typed
+    extract; ids arrive via `as_type="int"` at the call site).
+  - **Seed fixes** (`src/data/libraries/python/api-method-library.json`): `ExtractFieldAsync` now does
+    what its description promised — `as_type` store-as conversion (`int`/`float`/`bool`/`str`), array
+    indices in paths (`items[1].sku`), PASS/FAIL line on 200/201; `FormUrlEncode` now bracket-flattens
+    nested dicts/lists.
+  - **Bug-first:** `test/seedPython.test.ts`, `requestClassPython.test.ts`, `testPython.test.ts`,
+    `e2ePython.test.ts` (+ `emitter.test.ts` additions) written first and shown RED (module-not-found +
+    the seed extract runtime probe), then GREEN — including **runtime probes** that execute the emitted
+    Python (`py_compile` + real interpreter with stubbed `requests`/`DataGenerator`) asserting captured
+    values flow between steps. Full suite **346/347 green (1 skip: live pytest, not installed), build clean.**
+  - **Adoption:** VS Code NF-1/SP-PY (see `../Api2TestVS/docs/TASKS.md`); Desktop picks it up whenever it
+    exposes a Python target — both HANDOVERs note the lift (2026-08-12).
+  - _Original brief (kept for context):_ Core
   today emits C# (`E2ETestGenerationService` / `generateApiMethodsCSharp`) and TS
   (`generateE2ETestTypeScript` / `generateApiMethodsTypeScript`); **Python has no generator at all** —
   `emitterFor('python')` throws. Net-new (NOT a "finish" item on the capture work). Scope:
@@ -974,6 +1040,45 @@ Desktop drop-the-copy — `../api2test/docs/TASKS.md`._
 ## Done (kept for re-verification — do not delete)
 
 _Move items here when complete; note the branch/PR + which editions consumed the bump._
+
+- [x] **PYT-ROOT — pytest ran code from ABOVE the sandbox it was handed. DONE 2026-08-16 (`develop`).**
+  Found while root-causing a red `pytestRunner` test that only failed in the full suite: the run
+  reported zero tests, and the JUnit XML held `FileNotFoundError ... MSBuildTemp*` — a file no test of
+  ours ever created. Cause: `runPytest` passed only the target directory, so pytest inferred its
+  rootdir by walking UP the filesystem, scanning the parent (here the OS temp root, where a concurrent
+  `dotnet test` was creating and deleting MSBuild scratch files) and **executing any `conftest.py` it
+  found there**. The second consequence is the serious one: a stray conftest above a user's sandbox
+  runs arbitrary Python inside their test run. Fix: `--rootdir=<projectDir>` — the runner never needs
+  anything above the directory it was given. Bug-first: the new
+  `test/pytestRunner.test.ts` "an ancestor conftest.py is never loaded" test plants a throwing
+  conftest in the parent; RED `RuntimeError: ancestor conftest executed` → GREEN. Both editions get
+  this with the next bump (VS Code Test Sets/Execute already route Python through `compileAndRunTests`;
+  Desktop when it adopts TS-C4).
+
+- [x] **TMP-CLEAN — test temp directories now delete themselves. DONE 2026-08-16 (`develop`).** User:
+  *"why are there hundreds of leftover temp dirs?"* — there were 17,532 orphaned `a2t-*` directories
+  (~430 MB) in `%TEMP%`, from this repo, the extension and Desktop. Every filesystem suite
+  `mkdtempSync`'d into the temp root and left the directory behind; only `compileAndRun.test.ts`
+  cleaned up. Beyond disk, this is what made PYT-ROOT bite: pytest's ancestor scan costs time
+  proportional to the parent's size (measured: 0.27s collect with a clean parent, 0.68s with 6,000
+  siblings, 0.00s with `--rootdir`). New `test/tmp.ts` exports `tmpDir(prefix)` — `mkdtempSync` plus
+  registration for removal on `process.on('exit')`, which a per-test `finally` cannot match because a
+  throwing test skips it. All 33 call sites across 24 files converted; verified by counting `%TEMP%`
+  after a full run: 0 left, 354 passing. The extension has the mirror helper at `src/test/tmp.ts`;
+  Desktop still leaks (`api2test-reg-*`, `api2test-api-*`) — see its TASKS.md.
+
+- [x] **RUN-LANG + RUN-FW — language-routed compile-and-run + framework-per-language. DONE 2026-08-13
+  (`develop`, uncommitted).** Lifted from the VS Code extension (user: "run tests based on the
+  install language" / "are you duplicating code?"): each edition was branching on the language
+  itself — or, in Test Sets' case, not branching at all and running `dotnet test` on a python
+  sandbox. `compileAndRunTests(language, projectDir, {timeoutMs?, filter?})` in `TestRunnerService`
+  is now the ONE place that knows the toolchain pair per language (compileall+pytest / tsc+Vitest /
+  dotnet build+test) and each runner's filter syntax (callers pass the bare artifact name). And
+  `frameworksFor(language)` in `models/E2EDto.ts` owns the framework choice (csharp →
+  MSTest/xUnit/NUnit, typescript → Vitest, python → pytest; first = default); `TestFramework`
+  widened with 'Vitest' | 'pytest'. Bug-first: `test/compileAndRun.test.ts` (RED → GREEN, 352
+  passing). Consumed by VS Code (Execute + Test Sets + E2E dialog, 0.2.56 branch
+  `sp1-1-deploy-via-core`); Desktop adoption is TS-C4.
 
 - [x] **IMPORT-HANG — RESP-SCHEMA made a real spec import never finish, and say nothing while it
   didn't. DONE 2026-08-10 (`develop`, uncommitted).** Reported the same day by the user, on the very

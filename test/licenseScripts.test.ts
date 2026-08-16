@@ -2,14 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { verifyEntitlement } from '../src/licensing/entitlements';
+import { tmpDir } from './tmp';
 
 // Drive the REAL scripts end-to-end: generate a keypair, sign a token, verify it with the
 // production verify path. No mocking — this is exactly the release/issuing flow (LIC-4).
 const scripts = path.join(__dirname, '..', 'scripts', 'license');
-const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-license-'));
+const outDir = tmpDir('a2t-license-');
 
 function run(script: string, args: string[]): string {
   return execFileSync(process.execPath, [path.join(scripts, script), ...args], { encoding: 'utf8' });
@@ -37,7 +37,7 @@ test('generate-keys → sign → verifyEntitlement round-trip (minimal claims, n
 });
 
 test('a token signed with a FRESH keypair is rejected by a different public key', () => {
-  const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-license-other-'));
+  const otherDir = tmpDir('a2t-license-other-');
   run('generate-keys.js', [otherDir]);
   const token = lastLine(run('sign.js', ['--key', path.join(otherDir, 'private.pem'), '--sub', 'x', '--days', '60']));
   const pub = fs.readFileSync(path.join(outDir, 'public.pem'), 'utf8');

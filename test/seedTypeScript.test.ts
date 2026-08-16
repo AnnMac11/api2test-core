@@ -6,7 +6,6 @@
  */
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -14,6 +13,7 @@ import { getDefaultDataLibrary, getDefaultApiMethodLibrary } from '../src/data/d
 import { generateDataLibraryTypeScript } from '../src/services/generateDataLibraryTypeScript';
 import { generateApiMethodsTypeScript } from '../src/services/generateApiMethodsTypeScript';
 import { tsSymbol } from '../src/services/tsNaming';
+import { tmpDir } from './tmp';
 
 function compile(dir: string): void {
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
@@ -36,7 +36,7 @@ test('every seed method defines the camelCase symbol the emitters call (tsSymbol
 test('the TS Data Library seed emits a dataGenerator.ts that type-checks', () => {
   const methods = getDefaultDataLibrary('typescript').map((m: any) => ({ methodName: m.methodName, description: m.description, code: m.code }));
   const code = generateDataLibraryTypeScript(methods);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-seed-'));
+  const dir = tmpDir('a2t-seed-');
   fs.writeFileSync(path.join(dir, 'dataGenerator.ts'), code);
   fs.writeFileSync(path.join(dir, 'faker.d.ts'), "declare module '@faker-js/faker' { export const faker: any; }\n");
   fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
@@ -49,7 +49,7 @@ test('the TS Data Library seed emits a dataGenerator.ts that type-checks', () =>
 test('the TS API Method Library seed emits an apiMethods.ts that type-checks', () => {
   const methods = getDefaultApiMethodLibrary('typescript').filter((m: any) => m.code && m.code.trim());
   const code = generateApiMethodsTypeScript(methods as any, { includeApiClient: true });
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-seed-'));
+  const dir = tmpDir('a2t-seed-');
   fs.writeFileSync(path.join(dir, 'apiMethods.ts'), code);
   fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
     compilerOptions: { strict: true, target: 'ES2022', lib: ['ES2022', 'DOM'], types: [], moduleDetection: 'force', noEmit: true },

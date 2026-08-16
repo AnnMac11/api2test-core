@@ -67,6 +67,24 @@ or is under maintenance) and every test using it cascades. This rule is Desktop-
 
 ## State of play (update each session)
 
+**As of 2026-08-12 (`PY-GEN-1` + `PY-1` — Python is a full language target; branch `develop`,
+346/347 passing, 1 skip):** the third language column is complete end-to-end in core. `PythonEmitter`
+(all five emit kinds: request classes, single tests, E2E chains, `api_methods.py`, `data_generator.py`)
+wired into `emitterFor('python')`; `pySymbol` naming (`GetAsync`→`get_async`, keeps `_async` unlike TS);
+`mapCaptureType` python column (`float`/`bool`/`str`); seed `ExtractFieldAsync`/`FormUrlEncode` upgraded
+to match their descriptions (typed store-as + array paths + PASS/FAIL; bracket-flattened forms). Runner:
+`parseJUnitXml` / `runPyCompile` (`compileall`, stdlib-only) / `runPytest` (`--junit-xml`,
+`junit_logging=out-err` so `##A2T_CALL##` markers attribute **per test for free** — the thing TS needed
+a custom reporter for), `BUILD_VALIDATORS.python`, all exported. Bug-first throughout: six test files
+RED first (44 subtests), runtime probes execute the emitted Python against a real interpreter with
+stubbed `requests`; the JUnit parser RED run caught a real `name=`/`classname=` regex bug. Details in
+`TASKS.md` PY-GEN-1/PY-1. **Adoption:** VS Code is the consumer (deploy layout `Libraries`/`Classes`/
+`Tests` namespace packages, `sys.path` bootstrap emitted in each test): needs its `executeTestCase`
+python branch (`runPyCompile`→`runPytest`), environment requirements (python + pytest/requests/faker),
+and — **last, the on-switch** — the `targetLanguage` picker option; tasks in `../Api2TestVS/docs/TASKS.md`.
+**Desktop:** nothing to adopt until it exposes a Python target; noted in its HANDOVER. pytest is not
+installed on this machine, so the live `runPytest` test self-skips — install pytest to see it run.
+
 **As of 2026-08-10 (`IMPORT-HANG` — a real spec can be imported again; branch `develop`, UNCOMMITTED,
 312 passing):** RESP-SCHEMA (below) shipped in VS Code 0.2.50 and the user's next Stripe import never
 finished — *"it appears to be stuck. there is no error?"*. Measured: the committed adapter does

@@ -6,4 +6,5 @@ export * from './StorageProvider';
 export * from './CodeEmitter';
 export * from './CSharpEmitter';
 export * from './TypeScriptEmitter';
+export * from './PythonEmitter';
 export * from './DeployTarget';

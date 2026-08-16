@@ -1,17 +1,15 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { FileStorageService } from '../src/services/FileStorageService';
+import { tmpDir } from './tmp';
 
 function tempStore(): FileStorageService {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-store-'));
+    const dir = tmpDir('a2t-store-');
     return new FileStorageService(dir);
 }
 
 test('honours a custom data path', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2t-path-'));
+    const dir = tmpDir('a2t-path-');
     const store = new FileStorageService(dir);
     assert.equal(store.getDataPath(), dir);
 });
