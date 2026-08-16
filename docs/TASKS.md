@@ -11,6 +11,32 @@ here affect both editions — note the coordinated version bump on any task that
 
 ## Open
 
+- [ ] **RUN-MAP — a test result can only be mapped back to its test case in C#. Raised 2026-08-16 while
+  adopting RUN-LANG in the Desktop app (`api2test` TS-C4).** Not yet reproduced against a real python /
+  TypeScript run — this is a read of the emitters against the result parsers, so **confirm it first**.
+  - **The gap.** Core owns both ends — it emits the test and it parses the runner's output — but the only
+    name that joins them is `methodNameOf(caseName)`, whose own doc-comment says it is "a test case's
+    generated **C#** method name". The other two emitters don't name the test after the case at all:
+    - `generateTestPython.ts:123` → `def test_${(request.method||'call').toLowerCase()}_returns_success()`
+    - `generateTestTypeScript.ts:138` → `it('${request.method} returns success')` inside `describe('${cls}')`
+    So on python/TypeScript, `parseJUnitXml`/`parseVitestJson` return a `method` that can never equal
+    `methodNameOf('Create a pet')` (`CreateAPet`). Every case comes back as a **false skip** — "Deployed X
+    but it didn't run" — even when it passed. Worse, the python/TS names are derived from the HTTP method,
+    so two cases in one project can share a name outright.
+  - **Why it must be fixed here, not in the consumers.** Both consumers map by `methodNameOf` (Desktop
+    `server/runSuite.ts`, VS Code `services/executeTestCase.ts`); neither can do better without
+    duplicating core's emitter naming. The *filter* is already right — `safeArtifactName` is the artifact
+    name core gives the file and the class in all three languages, so `FullyQualifiedName~`, pytest `-k`
+    (matches the `test_<artifact>.py` module) and Vitest `-t` all hit. It's only the **result → case**
+    join that is C#-only.
+  - **Shape of the fix (to agree).** Either name the emitted test after the case in python/TS as C# does,
+    or carry the artifact name on `RawTestResult` so consumers join on it instead of the method name.
+    The first is the better fix — it also removes the same-name collision — but it changes generated code.
+  - **Bug-first.** The test that should have caught this is a core round-trip: emit a case for each
+    language, parse a runner output for it, assert the case is found. No such test exists; that's the gap.
+  - **Consumers.** Re-review tasks filed in `../api2test/docs/TASKS.md` (RUN-MAP-D) and
+    `../Api2TestVS/docs/TASKS.md` (RUN-MAP-V).
+
 - [x] **SEND-1 / NAME-1 — a GET step generated code that could not compile, and the method names did not
   say what they do. DONE 2026-08-08 (branch `develop`, uncommitted).** Found by the user: generated test
   `test5` failed with
